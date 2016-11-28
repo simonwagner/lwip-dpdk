@@ -51,7 +51,7 @@ kniif_alloc(int socket_id)
 {
 	struct kniif *kniif;
 
-	kniif = rte_zmalloc_socket("KNIIF", sizeof(kniif), CACHE_LINE_SIZE,
+	kniif = rte_zmalloc_socket("KNIIF", sizeof(kniif), RTE_CACHE_LINE_SIZE,
 				   socket_id);
 	return kniif;
 }

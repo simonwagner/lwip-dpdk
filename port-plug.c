@@ -47,7 +47,7 @@ rte_port_plug_create(struct rte_port_plug_params *conf,
 {
 	struct rte_port_plug *port;
 
-	port = rte_zmalloc_socket("PORT", sizeof(*port), CACHE_LINE_SIZE,
+	port = rte_zmalloc_socket("PORT", sizeof(*port), RTE_CACHE_LINE_SIZE,
 				  socket_id);
         if (port == NULL) {
                 RTE_LOG(ERR, PORT, "Cannot allocate plug port\n");

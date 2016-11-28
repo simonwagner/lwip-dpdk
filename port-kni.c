@@ -50,7 +50,7 @@ rte_port_kni_create(struct rte_port_kni_params *conf,
         struct rte_kni_conf kni_conf;
         struct rte_kni_ops kni_ops;
 
-	port = rte_zmalloc_socket("PORT", sizeof(*port), CACHE_LINE_SIZE,
+	port = rte_zmalloc_socket("PORT", sizeof(*port), RTE_CACHE_LINE_SIZE,
 				  socket_id);
         if (port == NULL) {
                 RTE_LOG(ERR, PORT, "Cannot allocate kni port\n");

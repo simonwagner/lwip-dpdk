@@ -47,7 +47,7 @@ plugif_alloc(int socket_id)
 {
 	struct plugif *plugif;
 
-	plugif = rte_zmalloc_socket("PLUGIF", sizeof(plugif), CACHE_LINE_SIZE,
+	plugif = rte_zmalloc_socket("PLUGIF", sizeof(plugif), RTE_CACHE_LINE_SIZE,
 				    socket_id);
 	return plugif;
 }

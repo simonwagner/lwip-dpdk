@@ -50,7 +50,7 @@ rte_port_eth_create(struct rte_port_eth_params *conf,
 	uint8_t port_id = conf->port_id;
 	int ret;
 
-	port = rte_zmalloc_socket("PORT", sizeof(*port), CACHE_LINE_SIZE,
+	port = rte_zmalloc_socket("PORT", sizeof(*port), RTE_CACHE_LINE_SIZE,
 				  socket_id);
         if (port == NULL) {
                 RTE_LOG(ERR, PORT, "Cannot allocate eth port\n");

@@ -51,7 +51,7 @@ ethif_alloc(int socket_id)
 {
 	struct ethif *ethif;
 
-	ethif = rte_zmalloc_socket("ETHIF", sizeof(ethif), CACHE_LINE_SIZE,
+	ethif = rte_zmalloc_socket("ETHIF", sizeof(ethif), RTE_CACHE_LINE_SIZE,
 				   socket_id);
 	return ethif;
 }
