@@ -36,7 +36,7 @@
 
 #include <rte_mbuf.h>
 
-#include <lwip/timers.h>
+#include <lwip/timeouts.h>
 
 #include "bridge.h"
 #include "dispatch.h"
