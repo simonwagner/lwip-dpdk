@@ -58,6 +58,13 @@
 */
 
 /**
+ * SYS_LIGHTWEIGHT_PROT==1: if you want inter-task protection for certain
+ * critical regions during buffer allocation, deallocation and memory
+ * allocation and deallocation.
+ */
+#define SYS_LIGHTWEIGHT_PROT            0
+
+/**
  * NO_SYS==1: Provides VERY minimal functionality. Otherwise,
  * use lwIP facilities.
  */
