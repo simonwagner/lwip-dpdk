@@ -50,7 +50,7 @@ typedef enum {
 	RTE_PORT_TYPE_PLUG = 90,
 } rte_port_type;
 
-struct rte_port rte_port;
+struct rte_port;
 
 typedef int (*rte_port_op_rx_burst)
 	(struct rte_port *rte_port, struct rte_mbuf **pkts, uint32_t n_pkts);
