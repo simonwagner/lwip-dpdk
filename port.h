@@ -62,17 +62,9 @@ struct rte_port_ops {
 	rte_port_op_tx_burst	tx_burst;
 };
 
-struct rte_port_stats {
-	uint64_t	rx_packets;
-	uint64_t	tx_packets;
-	uint64_t	rx_dropped;
-	uint64_t	tx_dropped;
-};
-
 struct rte_port {
 	rte_port_type		type;
 	struct rte_port_ops	ops;
-	struct rte_port_stats	stats;
 };
 
 struct net {

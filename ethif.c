@@ -90,7 +90,6 @@ ethif_input(struct ethif *ethif, struct rte_mbuf *m)
 	p = pbuf_alloc(PBUF_RAW, len, PBUF_POOL);
 	if (p == 0) {
 		rte_pktmbuf_free(m);
-		ethif->eth_port->rte_port.stats.rx_dropped += 1;
 		return ERR_OK;
 	}
 

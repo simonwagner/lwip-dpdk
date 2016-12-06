@@ -121,8 +121,6 @@ rte_port_eth_rx_burst(struct rte_port *rte_port,
 		return rx;
 	}
 
-	p->rte_port.stats.rx_packets += rx;
-
 	return rx;
 }
 
@@ -142,12 +140,10 @@ rte_port_eth_tx_burst(struct rte_port *rte_port,
 	p = container_of(rte_port, struct rte_port_eth, rte_port);
 
 	tx = rte_eth_tx_burst(p->port_id, 0, pkts, n_pkts);
-	p->rte_port.stats.tx_packets += tx;
 
 	if (unlikely(tx < n_pkts)) {
 		for (; tx < n_pkts; tx++) {
 			rte_pktmbuf_free(pkts[tx]);
-			p->rte_port.stats.tx_dropped += 1;
 		}
         }
 	return tx;
