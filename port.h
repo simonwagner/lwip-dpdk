@@ -87,7 +87,6 @@ struct net_port {
 	rte_port_type		 rte_port_type;
 	struct net		 net;
 	struct netif		*netif;
-	struct bridge_port	*bridge_port;
 	struct rte_port		*rte_port;
 };
 

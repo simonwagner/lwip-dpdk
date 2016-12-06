@@ -48,8 +48,8 @@ include $(RTE_SDK)/mk/rte.vars.mk
 all: lwip-dpdk
 
 APP = lwip-dpdk
-SRCS-y := bridge.c dispatch.c main.c mempool.c ethif.c kniif.c plugif.c \
-	port-eth.c port-kni.c port-plug.c \
+SRCS-y := main.c mempool.c ethif.c \
+	port-eth.c \
 	lwip/src/core/def.c \
 	lwip/src/core/init.c \
 	lwip/src/core/mem.c \

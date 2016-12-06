@@ -21,9 +21,6 @@
 #include <lwip/timeouts.h>
 #include <netif/ethernet.h>
 
-#include "port.h"
-#include "bridge.h"
-#include "dispatch.h"
 #include "ethif.h"
 #include "main.h"
 #include "main.hpp"
