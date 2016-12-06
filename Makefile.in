@@ -64,6 +64,9 @@ SRCS-y := bridge.c dispatch.c main.c mempool.c ethif.c kniif.c plugif.c \
 	lwip/src/core/ipv4/ip4_frag.c \
 	lwip/src/core/timeouts.c \
 	lwip/src/core/udp.c \
+	lwip/src/core/tcp.c \
+	lwip/src/core/tcp_out.c \
+	lwip/src/core/tcp_in.c \
 	lwip/src/core/ipv4/etharp.c \
 	lwip/src/netif/ethernet.c \
 	lwip/src/core/ipv4/ip4.c \
