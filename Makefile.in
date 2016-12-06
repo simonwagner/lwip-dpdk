@@ -75,6 +75,9 @@ EXTRA_CFLAGS += -Wall \
 	-I$(abs_srcdir)/lwip/src/include/ipv4 \
 	-I$(abs_srcdir)/lwip/src/include
 
+CXXFLAGS += -std=c++11 $(CFLAGS) $(EXTRA_CFLAGS)
+LDFLAGS += -lstdc++
+
 ifeq ($(enable_debug),yes)
 EXTRA_CFLAGS += -DLWIP_DEBUG=1 -O0 -g
 endif
