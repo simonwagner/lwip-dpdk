@@ -35,7 +35,15 @@
 
 #include "port.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 int ip_input_hook(struct pbuf *p, struct netif *inp);
 int dispatch_thread(struct net_port *ports, int nr_ports, int pkt_burst_sz);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

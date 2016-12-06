@@ -35,6 +35,10 @@
 
 #include "port.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 struct rte_port_plug;
 
 typedef int (*rte_port_plug_op_rx_burst)
@@ -60,5 +64,9 @@ struct rte_port_plug {
 struct rte_port_plug * rte_port_plug_create
 	(struct rte_port_plug_params *conf, int socket_id,
 	 struct net_port *net_port);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

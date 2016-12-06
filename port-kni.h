@@ -37,6 +37,10 @@
 
 #include "port.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 struct rte_port_kni_params {
 	char			*name;
 	struct rte_mempool	*mempool;
@@ -53,5 +57,9 @@ struct rte_port_kni * rte_port_kni_create
 	 struct net_port *net_port);
 int rte_port_kni_tx_burst
 	(struct rte_port *rte_port, struct rte_mbuf **pkts, uint32_t n_pkts);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

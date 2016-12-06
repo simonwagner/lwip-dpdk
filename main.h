@@ -33,6 +33,10 @@
 #ifndef _MAIN_H_
 #define _MAIN_H_
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /* Macros for printing using RTE_LOG */
 #define RTE_LOGTYPE_APP RTE_LOGTYPE_USER1
 
@@ -53,5 +57,9 @@
 #define MEMPOOL_CACHE_SZ        PKT_BURST_SZ
 
 extern struct rte_mempool *mempool;
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

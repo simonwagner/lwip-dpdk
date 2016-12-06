@@ -35,6 +35,10 @@
 
 #include "port-plug.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 struct plugif {
 	rte_port_type		 rte_port_type;
 	struct rte_port_plug	*plug_port;
@@ -46,5 +50,9 @@ err_t plugif_init(struct plugif *plugif, struct rte_port_plug_params *params,
 		  int socket_id, struct net_port *net_port);
 err_t plugif_input(struct plugif *plugif, struct rte_mbuf *pkt);
 err_t plugif_added_cb(struct netif *netif);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

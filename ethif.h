@@ -33,6 +33,10 @@
 #ifndef _ETHIF_H_
 #define _ETHIF_H_
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #include "port-eth.h"
 
 struct ethif {
@@ -46,5 +50,9 @@ err_t ethif_init(struct ethif *ethif, struct rte_port_eth_params *params,
 		 int socket_id, struct net_port *net_port);
 err_t ethif_input(struct ethif *ethif, struct rte_mbuf *pkt);
 err_t ethif_added_cb(struct netif *netif);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

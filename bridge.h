@@ -37,6 +37,10 @@
 
 #include "port-plug.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #define VXLAN_DST_PORT		4789
 
 struct vxlanhdr {
@@ -94,5 +98,9 @@ int bridge_tx_burst(struct rte_port_plug *plug_port,
 		    struct rte_mbuf **pkts, uint32_t n_pkts);
 int bridge_tx_vxlan_burst(struct rte_port_plug *plug_port,
 			  struct rte_mbuf **pkts, uint32_t n_pkts);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

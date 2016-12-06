@@ -33,6 +33,10 @@
 #ifndef _KNIIF_H_
 #define _KNIIF_H_
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #include "port-kni.h"
 
 struct kniif {
@@ -46,5 +50,9 @@ err_t kniif_init(struct kniif *kniif, struct rte_port_kni_params *params,
 		 int socket_id, struct net_port *net_port);
 err_t kniif_input(struct kniif *kniif, struct rte_mbuf *pkt);
 err_t kniif_added_cb(struct netif *netif);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

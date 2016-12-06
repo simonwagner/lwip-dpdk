@@ -36,8 +36,16 @@
 #include <rte_mbuf.h>
 #include <rte_mempool.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 extern struct rte_mempool *pktmbuf_pool;
 
 int mempool_init(int socket_id);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

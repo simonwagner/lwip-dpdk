@@ -37,6 +37,10 @@
 
 #include "port.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 struct rte_port_eth_params {
 	uint8_t			 port_id;
 	uint16_t		 nb_rx_desc;
@@ -58,5 +62,9 @@ struct rte_port_eth * rte_port_eth_create
 	 struct net_port *net_port);
 int rte_port_eth_tx_burst
 	(struct rte_port *rte_port, struct rte_mbuf **pkts, uint32_t n_pkts);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

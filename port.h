@@ -40,6 +40,10 @@
 #include <lwip/ip_addr.h>
 #include <lwip/netif.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 typedef enum {
 	RTE_PORT_TYPE_ETH = 1,
 	RTE_PORT_TYPE_KNI,
@@ -90,6 +94,10 @@ struct net_port {
 #ifndef container_of
 #define container_of(ptr, type, member)                                 \
         ((type *)(void *)((char *)(ptr) - offsetof(type, member)))
+#endif
+
+#ifdef __cplusplus
+}
 #endif
 
 #endif
