@@ -166,8 +166,6 @@ int parse_args(int argc, char** argv, struct net* net_config_out)
 static int
 create_eth_port(struct net_port *net_port, int socket_id)
 {
-    net_port->rte_port_type = RTE_PORT_TYPE_ETH;
-
     struct net *net = &net_port->net;
     struct rte_port_eth_params params;
 
@@ -341,8 +339,6 @@ dispatch_to_ethif(struct netif *netif,
 {
     struct ethif *ethif = (struct ethif *)netif->state;
     uint32_t i;
-
-    RTE_VERIFY(ethif->rte_port_type == RTE_PORT_TYPE_ETH);
 
     for (i = 0; i < n_pkts; i++)
         ethif_input(ethif, pkts[i]);

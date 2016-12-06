@@ -40,7 +40,6 @@ extern "C" {
 #include "port-eth.h"
 
 struct ethif {
-	rte_port_type		 rte_port_type;
 	struct rte_port_eth	*eth_port;
 	struct netif		 netif;
 };

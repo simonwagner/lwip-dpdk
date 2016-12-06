@@ -44,12 +44,6 @@
 extern "C" {
 #endif
 
-typedef enum {
-	RTE_PORT_TYPE_ETH = 1,
-	RTE_PORT_TYPE_KNI,
-	RTE_PORT_TYPE_PLUG = 90,
-} rte_port_type;
-
 struct rte_port;
 
 typedef int (*rte_port_op_rx_burst)
@@ -63,7 +57,6 @@ struct rte_port_ops {
 };
 
 struct rte_port {
-	rte_port_type		type;
 	struct rte_port_ops	ops;
 };
 
@@ -76,7 +69,6 @@ struct net {
 };
 
 struct net_port {
-	rte_port_type		 rte_port_type;
 	struct net		 net;
 	struct netif		*netif;
 	struct rte_port		*rte_port;

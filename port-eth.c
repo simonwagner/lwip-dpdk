@@ -58,7 +58,6 @@ rte_port_eth_create(struct rte_port_eth_params *conf,
 	}
 
 	port->port_id = port_id;
-	port->rte_port.type = RTE_PORT_TYPE_ETH;
 	port->rte_port.ops = rte_port_eth_ops;
 
 	ret = rte_eth_dev_configure(port_id, 1, 1, &conf->eth_conf);
@@ -111,8 +110,6 @@ rte_port_eth_rx_burst(struct rte_port *rte_port,
 	struct rte_port_eth *p;
 	int rx;
 
-	RTE_VERIFY(rte_port->type == RTE_PORT_TYPE_ETH);
-
 	p = container_of(rte_port, struct rte_port_eth, rte_port);
 
 	rx = rte_eth_rx_burst(p->port_id, 0, pkts, n_pkts);
@@ -134,8 +131,6 @@ rte_port_eth_tx_burst(struct rte_port *rte_port,
 {
 	struct rte_port_eth *p;
 	int tx;
-
-	RTE_VERIFY(rte_port->type == RTE_PORT_TYPE_ETH);
 
 	p = container_of(rte_port, struct rte_port_eth, rte_port);
 

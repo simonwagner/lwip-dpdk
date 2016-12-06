@@ -60,8 +60,6 @@ err_t
 ethif_init(struct ethif *ethif, struct rte_port_eth_params *params,
 	   int socket_id, struct net_port *net_port)
 {
-	ethif->rte_port_type = RTE_PORT_TYPE_ETH;
-
 	ethif->eth_port = rte_port_eth_create(params, socket_id, net_port);
 	if (!ethif->eth_port)
 		return ERR_MEM;
@@ -84,8 +82,6 @@ ethif_input(struct ethif *ethif, struct rte_mbuf *m)
 	int len = rte_pktmbuf_pkt_len(m);
 	char *dat = rte_pktmbuf_mtod(m, char *);
 	struct pbuf *p, *q;
-
-	RTE_VERIFY(ethif->rte_port_type == RTE_PORT_TYPE_ETH);
 
 	p = pbuf_alloc(PBUF_RAW, len, PBUF_POOL);
 	if (p == 0) {
@@ -115,8 +111,6 @@ low_level_output(struct netif *netif, struct pbuf *p)
 	struct rte_mbuf *m;
 	struct pbuf *q;
 
-	RTE_VERIFY(ethif->rte_port_type == RTE_PORT_TYPE_ETH);
-
 	eth_port = ethif->eth_port;
 
 	m = rte_pktmbuf_alloc(pktmbuf_pool);
@@ -141,8 +135,6 @@ err_t
 ethif_added_cb(struct netif *netif)
 {
 	struct ethif *ethif = (struct ethif *)netif->state;
-
-	RTE_VERIFY(ethif->rte_port_type == RTE_PORT_TYPE_ETH);
 
 	netif->name[0] = 'e';
 	netif->name[1] = 't';
