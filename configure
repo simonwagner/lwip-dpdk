@@ -584,7 +584,7 @@ PACKAGE_STRING='lwip-dpdk 1.0'
 PACKAGE_BUGREPORT='takayuki@midokura.com'
 PACKAGE_URL=''
 
-ac_unique_file="main.c"
+ac_unique_file="main.cpp"
 ac_subst_vars='LTLIBOBJS
 LIBOBJS
 RTE_TARGET
