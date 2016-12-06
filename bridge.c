@@ -104,7 +104,7 @@ bridge_add_vxlan(struct bridge *bridge, struct vxlan_peer *peer)
 
 static void
 vxlan_recv(void *arg, struct udp_pcb *pcb, struct pbuf *p,
-	   ip_addr_t *addr, u16_t port)
+	   const ip_addr_t *addr, u16_t port)
 {
 	struct bridge *bridge = (struct bridge *)arg;
 	struct rte_port *rte_port = bridge->plug.net_port.rte_port;
