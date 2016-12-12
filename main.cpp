@@ -249,16 +249,16 @@ int main(int argc, char** argv) {
     err_t tcp_ret;
     tcp_ret = tcp_bind(connection, &net_port.net.ip_addr, 4242 /* bind to some random default port */);
     if(tcp_ret != ERR_OK) {
-        RTE_LOG(ERR, APP, "Failed to bind connection: %d", tcp_ret);
+        RTE_LOG(ERR, APP, "Failed to bind connection: %d\n", tcp_ret);
     }
 
     tcp_ret = tcp_connect(connection, &ipaddr, port, [](void* arg, struct tcp_pcb*, err_t err) -> err_t {
         if(err == ERR_OK) {
-            RTE_LOG(INFO, APP, "Established connection");
+            RTE_LOG(INFO, APP, "Established connection\n");
             connected = true;
         }
         else {
-            RTE_LOG(ERR, APP, "Connecting failed (%d)", err);
+            RTE_LOG(ERR, APP, "Connecting failed (%d)\n", err);
         }
 
         return ERR_OK;
