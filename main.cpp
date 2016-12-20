@@ -1,6 +1,7 @@
 #include <queue>
 #include <thread>
 #include <string>
+#include <vector>
 #include <mutex>
 #include <condition_variable>
 #include <regex>
@@ -33,9 +34,11 @@ using namespace std;
 #define RTE_TEST_RX_DESC_DEFAULT 128
 #define RTE_TEST_TX_DESC_DEFAULT 512
 
-queue<string> input_queue;
+typedef vector<uint8_t> bytes;
+
+queue<bytes> input_queue;
 cursor input_cursor;
-queue<string> output_queue;
+queue<bytes> output_queue;
 cursor output_cursor;
 
 mutex input_mutex;
@@ -296,7 +299,7 @@ void ui_thread() {
 
     bool quit = false;
     while(true) {
-        string input;
+        bytes input;
         while(kbhit()) {
             //super ugly, non-blocking console I/O
             char c = fgetc(stdin);
@@ -304,7 +307,7 @@ void ui_thread() {
                 quit = true;
                 break;
             }
-            input.append(1, c);
+            input.emplace_back(c);
         }
 
         if(quit) {
@@ -325,9 +328,9 @@ void ui_thread() {
             });
 
             if(!output_queue.empty()) {
-                string output = output_queue.front();
+                bytes& output = output_queue.front();
+                fwrite(output.data(), 1, output.size(), stdout);
                 output_queue.pop();
-                printf("%s", output.c_str());
             }
         }
     }
@@ -413,7 +416,7 @@ dispatch_ui_input()
         //if cursor is at the end of the current element,
         //pick a new element from the queue
         if(!input_queue.empty()) {
-            string new_input = input_queue.front();
+            bytes& new_input = input_queue.front();
             input_cursor.reset(new_input);
             input_queue.pop();
         }
@@ -444,11 +447,11 @@ err_t callback_ui_output(void * arg, struct tcp_pcb * tpcb,
 
     unique_lock<mutex> lock(output_mutex);
 
-    string data;
+    bytes data;
 
     struct pbuf *current_pbuf = p;
     while(current_pbuf != NULL && current_pbuf->len > 0) {
-        data.append((const char*)current_pbuf->payload, current_pbuf->len);
+        data.insert(data.end(), (const char*)current_pbuf->payload, ((const char*)current_pbuf->payload) + current_pbuf->len);
         current_pbuf = current_pbuf->next;
     }
 

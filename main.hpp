@@ -1,13 +1,14 @@
 #pragma once
 
-#include <string>
+#include <vector>
+#include <stdint.h>
 
 /* UI */
 
 class cursor {
 public:
     size_t pos = 0;
-    std::string data = "";
+    std::vector<std::uint8_t> data = {};
 
     size_t len() {
         return data.size();
@@ -17,7 +18,7 @@ public:
         return len() - pos;
     }
 
-    void reset(const std::string& new_data)
+    void reset(const std::vector<std::uint8_t>& new_data)
     {
         data = new_data;
         pos = 0;
@@ -33,8 +34,8 @@ public:
         pos += n;
     }
 
-    const char* ptr()
+    const uint8_t* ptr()
     {
-        return data.c_str() + pos;
+        return ((uint8_t*)data.data()) + pos;
     }
 };
