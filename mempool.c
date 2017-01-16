@@ -37,7 +37,7 @@
 #include "main.h"
 #include "mempool.h"
 
-struct rte_mempool *pktmbuf_pool;
+struct rte_mempool *pktmbuf_pool = NULL;
 
 int
 mempool_init(int socket_id)
@@ -51,4 +51,14 @@ mempool_init(int socket_id)
 		rte_panic("Cannot init mbuf pool\n");
 
 	return 0;
+}
+
+int
+mempool_release()
+{
+    if(pktmbuf_pool != NULL) {
+        rte_mempool_free(pktmbuf_pool);
+    }
+
+    return 0;
 }

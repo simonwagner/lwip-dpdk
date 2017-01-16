@@ -51,7 +51,7 @@ extern "C" {
 #define NB_MBUF                 8192
 
 /* How many packets to attempt to read from NIC in one go */
-#define PKT_BURST_SZ            32
+#define PKT_BURST_SZ            512
 
 /* How many objects (mbufs) to keep in per-lcore mempool cache */
 #define MEMPOOL_CACHE_SZ        PKT_BURST_SZ

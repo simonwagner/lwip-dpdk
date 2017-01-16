@@ -34,6 +34,8 @@
 #include <config.h>
 #endif
 
+#include <lwip/opt.h>
+#include <lwip/debug.h>
 #include <lwip/mem.h>
 #include <lwip/netif.h>
 #include <netif/etharp.h>
@@ -45,6 +47,63 @@
 
 #include "ethif.h"
 #include "mempool.h"
+
+#define HEXDUMP_COLS 8
+
+void hexdump(void *mem, unsigned int len)
+{
+        unsigned int i, j;
+
+        for(i = 0; i < len + ((len % HEXDUMP_COLS) ? (HEXDUMP_COLS - len % HEXDUMP_COLS) : 0); i++)
+        {
+                /* print offset */
+                if(i % HEXDUMP_COLS == 0)
+                {
+                        printf("0x%06x: ", i);
+                }
+
+                /* print hex data */
+                if(i < len)
+                {
+                        printf("%02x ", 0xFF & ((char*)mem)[i]);
+                }
+                else /* end of block, just aligning for ASCII dump */
+                {
+                        printf("   ");
+                }
+
+                /* print ASCII dump */
+                if(i % HEXDUMP_COLS == (HEXDUMP_COLS - 1))
+                {
+                        for(j = i - (HEXDUMP_COLS - 1); j <= i; j++)
+                        {
+                                if(j >= len) /* end of block, not really printing */
+                                {
+                                        putchar(' ');
+                                }
+                                else if(isprint(((char*)mem)[j])) /* printable char */
+                                {
+                                        putchar(0xFF & ((char*)mem)[j]);
+                                }
+                                else /* other char */
+                                {
+                                        putchar('.');
+                                }
+                        }
+                        putchar('\n');
+                }
+        }
+}
+
+static inline double TimeSpecToSeconds(struct timespec* ts)
+{
+    return (double)ts->tv_sec + (double)ts->tv_nsec / 1000000000.0;
+}
+
+static inline double DurationInSeconds(struct timespec* start, struct timespec* end)
+{
+    return TimeSpecToSeconds(end) - TimeSpecToSeconds(start);
+}
 
 struct ethif *
 ethif_alloc(int socket_id)
@@ -111,6 +170,11 @@ low_level_output(struct netif *netif, struct pbuf *p)
 	struct rte_mbuf *m;
 	struct pbuf *q;
 
+    struct timespec start;
+    struct timespec end;
+
+    //clock_gettime(CLOCK_MONOTONIC, &start);
+
 	eth_port = ethif->eth_port;
 
 	m = rte_pktmbuf_alloc(pktmbuf_pool);
@@ -126,7 +190,11 @@ low_level_output(struct netif *netif, struct pbuf *p)
 		rte_memcpy(data, q->payload, q->len);
 	}
 
-	rte_port_eth_tx_burst(&eth_port->rte_port, &m, 1);
+    int ret = rte_port_eth_tx_burst(&eth_port->rte_port, &m, 1);
+
+    //clock_gettime(CLOCK_MONOTONIC, &end);
+
+    //LWIP_DEBUGF(NETIF_DEBUG, ("dpdk: low_level_output took %g ms\n", DurationInSeconds(&start, &end) * 1e3));
 
 	return ERR_OK;
 }
@@ -141,7 +209,6 @@ ethif_added_cb(struct netif *netif)
 	netif->output = etharp_output;
 	netif->linkoutput = low_level_output;
 	netif->mtu = 1500;
-	eth_random_addr(netif->hwaddr);
 	netif->hwaddr_len = ETHER_ADDR_LEN;
 	netif->flags = NETIF_FLAG_BROADCAST | NETIF_FLAG_ETHARP;
 	return ERR_OK;

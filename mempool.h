@@ -43,6 +43,7 @@ extern "C" {
 extern struct rte_mempool *pktmbuf_pool;
 
 int mempool_init(int socket_id);
+int mempool_release();
 
 #ifdef __cplusplus
 }

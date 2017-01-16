@@ -43,13 +43,18 @@
    ---------- Debugging options ----------
    ---------------------------------------
 */
-#define ETHARP_DEBUG                    LWIP_DBG_ON
-#define NETIF_DEBUG                     LWIP_DBG_ON
-#define IP_DEBUG                        LWIP_DBG_OFF
-#define IP_REASS_DEBUG                  LWIP_DBG_ON
-#define RAW_DEBUG                       LWIP_DBG_ON
-#define ICMP_DEBUG                      LWIP_DBG_ON
-#define UDP_DEBUG                       LWIP_DBG_ON
+//#define LWIP_DEBUG                      LWIP_DBG_ON
+//#define ETHARP_DEBUG                    LWIP_DBG_ON
+//#define NETIF_DEBUG                     LWIP_DBG_ON
+//#define IP_DEBUG                        LWIP_DBG_ON
+//#define IP_REASS_DEBUG                  LWIP_DBG_ON
+//#define RAW_DEBUG                       LWIP_DBG_ON
+//#define ICMP_DEBUG                      LWIP_DBG_ON
+//#define UDP_DEBUG                       LWIP_DBG_ON
+//#define TCP_DEBUG                       LWIP_DBG_ON
+//#define TCP_INPUT_DEBUG                    LWIP_DBG_ON
+//#define TCP_OUTPUT_DEBUG                   LWIP_DBG_ON
+//#define TCP_CWND_DEBUG                  LWIP_DBG_ON
 
 /*
    -----------------------------------------------
@@ -128,12 +133,6 @@
 #define MEMP_NUM_TCP_PCB_LISTEN         8
 
 /**
- * MEMP_NUM_TCP_SEG: the number of simultaneously queued TCP segments.
- * (requires the LWIP_TCP option)
- */
-#define MEMP_NUM_TCP_SEG                16
-
-/**
  * MEMP_NUM_ARP_QUEUE: the number of simulateously queued outgoing
  * packets (pbufs) that are waiting for an ARP request (to resolve
  * their destination address) to finish.
@@ -186,6 +185,7 @@
  * LWIP_ARP==1: Enable ARP functionality.
  */
 #define LWIP_ARP                        1
+#define ETHARP_SUPPORT_STATIC_ENTRIES   1
 
 /*
    --------------------------------
@@ -354,6 +354,10 @@
  * LWIP_TCP==1: Turn on TCP.
  */
 #define LWIP_TCP                        1
+#define TCP_MSS                         1460
+#define TCP_SND_BUF                     (44*TCP_MSS)
+#define MEMP_NUM_TCP_SEG                ((4 * (TCP_SND_BUF) + (TCP_MSS - 1))/(TCP_MSS))
+//#define TCP_WND                         (10*1024)
 
 /*
    ----------------------------------

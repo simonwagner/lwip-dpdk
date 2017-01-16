@@ -50,6 +50,7 @@ all: lwip-dpdk
 APP = lwip-dpdk
 SRCS-y := main.c mempool.c ethif.c \
 	port-eth.c \
+	lwip/src/api/err.c \
 	lwip/src/core/def.c \
 	lwip/src/core/init.c \
 	lwip/src/core/mem.c \
@@ -78,7 +79,7 @@ EXTRA_CFLAGS += -Wall \
 	-I$(abs_srcdir)/lwip/src/include/ipv4 \
 	-I$(abs_srcdir)/lwip/src/include
 
-CXXFLAGS += -std=c++11 $(CFLAGS) $(EXTRA_CFLAGS)
+CXXFLAGS += -g -std=c++11 $(CFLAGS) $(EXTRA_CFLAGS)
 LDFLAGS += -lstdc++
 
 ifeq ($(enable_debug),yes)
