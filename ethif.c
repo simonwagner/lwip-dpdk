@@ -47,63 +47,9 @@
 
 #include "ethif.h"
 #include "mempool.h"
+#include "tools.h"
 
-#define HEXDUMP_COLS 8
 
-void hexdump(void *mem, unsigned int len)
-{
-        unsigned int i, j;
-
-        for(i = 0; i < len + ((len % HEXDUMP_COLS) ? (HEXDUMP_COLS - len % HEXDUMP_COLS) : 0); i++)
-        {
-                /* print offset */
-                if(i % HEXDUMP_COLS == 0)
-                {
-                        printf("0x%06x: ", i);
-                }
-
-                /* print hex data */
-                if(i < len)
-                {
-                        printf("%02x ", 0xFF & ((char*)mem)[i]);
-                }
-                else /* end of block, just aligning for ASCII dump */
-                {
-                        printf("   ");
-                }
-
-                /* print ASCII dump */
-                if(i % HEXDUMP_COLS == (HEXDUMP_COLS - 1))
-                {
-                        for(j = i - (HEXDUMP_COLS - 1); j <= i; j++)
-                        {
-                                if(j >= len) /* end of block, not really printing */
-                                {
-                                        putchar(' ');
-                                }
-                                else if(isprint(((char*)mem)[j])) /* printable char */
-                                {
-                                        putchar(0xFF & ((char*)mem)[j]);
-                                }
-                                else /* other char */
-                                {
-                                        putchar('.');
-                                }
-                        }
-                        putchar('\n');
-                }
-        }
-}
-
-static inline double TimeSpecToSeconds(struct timespec* ts)
-{
-    return (double)ts->tv_sec + (double)ts->tv_nsec / 1000000000.0;
-}
-
-static inline double DurationInSeconds(struct timespec* start, struct timespec* end)
-{
-    return TimeSpecToSeconds(end) - TimeSpecToSeconds(start);
-}
 
 struct ethif *
 ethif_alloc(int socket_id)
@@ -117,16 +63,11 @@ ethif_alloc(int socket_id)
 
 err_t
 ethif_init(struct ethif *ethif, struct rte_port_eth_params *params,
-	   int socket_id, struct net_port *net_port)
+       int socket_id)
 {
-	ethif->eth_port = rte_port_eth_create(params, socket_id, net_port);
+    ethif->eth_port = rte_port_eth_create(params, socket_id);
 	if (!ethif->eth_port)
 		return ERR_MEM;
-
-	memset(&ethif->netif, 0, sizeof(ethif->netif));
-
-	net_port->netif = &ethif->netif;
-	RTE_VERIFY(net_port->rte_port == &ethif->eth_port->rte_port);
 
 	return ERR_OK;
 }
@@ -136,7 +77,7 @@ ethif_init(struct ethif *ethif, struct rte_port_eth_params *params,
  *   mbuf: free all here
  */
 err_t
-ethif_input(struct ethif *ethif, struct rte_mbuf *m)
+ethif_input(struct netif *netif, struct rte_mbuf *m)
 {
 	int len = rte_pktmbuf_pkt_len(m);
 	char *dat = rte_pktmbuf_mtod(m, char *);
@@ -154,7 +95,7 @@ ethif_input(struct ethif *ethif, struct rte_mbuf *m)
 	}
 	rte_pktmbuf_free(m);
 
-	return ethif->netif.input(p, &ethif->netif);
+    return netif->input(p, netif);
 }
 
 /* buffer ownership and responsivity [if_output]
@@ -169,11 +110,6 @@ low_level_output(struct netif *netif, struct pbuf *p)
 	struct rte_port_eth *eth_port;
 	struct rte_mbuf *m;
 	struct pbuf *q;
-
-    struct timespec start;
-    struct timespec end;
-
-    //clock_gettime(CLOCK_MONOTONIC, &start);
 
 	eth_port = ethif->eth_port;
 
@@ -190,11 +126,7 @@ low_level_output(struct netif *netif, struct pbuf *p)
 		rte_memcpy(data, q->payload, q->len);
 	}
 
-    int ret = rte_port_eth_tx_burst(&eth_port->rte_port, &m, 1);
-
-    //clock_gettime(CLOCK_MONOTONIC, &end);
-
-    //LWIP_DEBUGF(NETIF_DEBUG, ("dpdk: low_level_output took %g ms\n", DurationInSeconds(&start, &end) * 1e3));
+    int ret = rte_port_eth_tx_burst(eth_port, &m, 1);
 
 	return ERR_OK;
 }
@@ -209,7 +141,15 @@ ethif_added_cb(struct netif *netif)
 	netif->output = etharp_output;
 	netif->linkoutput = low_level_output;
 	netif->mtu = 1500;
-	netif->hwaddr_len = ETHER_ADDR_LEN;
 	netif->flags = NETIF_FLAG_BROADCAST | NETIF_FLAG_ETHARP;
+
+    //set mac address
+    struct ether_addr mac_addr;
+    rte_eth_macaddr_get(ethif->eth_port->port_id, &mac_addr);
+    memcpy(netif->hwaddr, mac_addr.addr_bytes, ETHER_ADDR_LEN);
+    netif->hwaddr_len = ETHER_ADDR_LEN;
+
+    rte_eth_promiscuous_enable(ethif->eth_port->port_id);
+
 	return ERR_OK;
 }

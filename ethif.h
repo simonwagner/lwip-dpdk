@@ -41,13 +41,17 @@ extern "C" {
 
 struct ethif {
 	struct rte_port_eth	*eth_port;
-	struct netif		 netif;
 };
+
+static inline struct ethif* netif_dpdk_ethif(struct netif *netif)
+{
+    return (struct ethif*)netif->state;
+}
 
 struct ethif * ethif_alloc(int socket_id);
 err_t ethif_init(struct ethif *ethif, struct rte_port_eth_params *params,
-		 int socket_id, struct net_port *net_port);
-err_t ethif_input(struct ethif *ethif, struct rte_mbuf *pkt);
+         int socket_id);
+err_t ethif_input(struct netif *netif, struct rte_mbuf *pkt);
 err_t ethif_added_cb(struct netif *netif);
 
 #ifdef __cplusplus

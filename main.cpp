@@ -8,7 +8,6 @@
 #include <algorithm>
 #include <unistd.h>
 #include <atomic>
-#include <chrono>
 
 #include <getopt.h>
 #include <netdb.h>
@@ -28,28 +27,18 @@
 #include "main.h"
 #include "main.hpp"
 #include "mempool.h"
+#include "tools.h"
 
 using namespace std;
-using std::chrono::steady_clock;
 
-/* eonfigurable number of RX/TX ring descriptors
- */
+
 #define RTE_TEST_RX_DESC_DEFAULT 128
 #define RTE_TEST_TX_DESC_DEFAULT 512
 
-typedef vector<uint8_t> bytes;
-
-/*queue<bytes> input_queue;
-cursor input_cursor;
-queue<bytes> output_queue;
-cursor output_cursor;
-
-mutex input_mutex;
-mutex output_mutex;
-condition_variable output_condition;*/
 #define BUFFER_SIZE (4*1024)
 
 struct ui_input_state {
+    string input_filepath;
     FILE* f;
     off_t offset;
     char buffer[BUFFER_SIZE];
@@ -59,28 +48,32 @@ atomic<bool> connected;
 
 struct tcp_pcb* connection;
 
-ip_addr_t ipaddr;
-u16_t port;
+struct program_args {
+    uint8_t		      port_id;
+    ip_addr_t	      ip_addr;
+    ip_addr_t	      netmask;
+    struct ether_addr eth_port_mac_address;
+    bool              list_ether_addresses;
+    string            input_filepath;
+    ip_addr_t         dest_ip;
+    uint16_t          dest_port;
+};
 
-struct net_port net_port;
-
-string input_filepath;
-
-struct ether_addr eth_port_mac_address;
-
-bool list_ether_addresses = false;
+static duration duration_bytes_sent;
 
 int
-dispatch_netio_thread(struct net_port *ports, int nr_ports, int pkt_burst_sz);
+dispatch_netio_thread(netif *netif, int pkt_burst_sz, string input_file);
 int
 dispatch_ui_input(ui_input_state* state);
 void ui_thread();
 err_t callback_ui_output(void * arg, struct tcp_pcb * tpcb,
                        struct pbuf * p, err_t err);
+err_t callback_sent(void * arg, struct tcp_pcb * tpcb,
+                   u16_t len);
 
 bool parse_addr(const char* addr, ip_addr_t* ipaddr)
 {
-    regex ip_regex("(^\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})$");
+    regex ip_regex(R"(^([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3})$)");
     cmatch match;
 
     if(regex_match(addr, match, ip_regex)) {
@@ -116,35 +109,37 @@ char streqchr(char* str, char c)
     return '\0';
 }
 
-int parse_args(int argc, char** argv, struct net* net_config_out)
+int parse_args(int argc, char** argv, struct program_args*  args_out)
 {
     char c;
     int count = 0;
     char missing_required_flags[] = "PHampf";
 
+    args_out->list_ether_addresses = false;
+
     while ((c = getopt (argc, argv, "P:H:a:m:p:f:L")) != -1) {
         switch (c)
         {
         case 'P':
-            port = atoi(optarg);
+            args_out->dest_port = atoi(optarg);
             count += 2;
             break;
         case 'H':
-            if(!parse_addr(optarg, &ipaddr)) {
+            if(!parse_addr(optarg, &args_out->dest_ip)) {
                 fprintf(stderr, "Invalid destination IP Address: %s\n", optarg);
                 return -1;
             }
             count += 2;
             break;
         case 'a':
-            if(!parse_addr(optarg, &net_config_out->ip_addr)) {
+            if(!parse_addr(optarg, &args_out->ip_addr)) {
                 fprintf(stderr, "Invalid interface IP Address: %s\n", optarg);
                 return -1;
             }
             count += 2;
             break;
         case 'm':
-            if(!parse_addr(optarg, &net_config_out->netmask)) {
+            if(!parse_addr(optarg, &args_out->netmask)) {
                 fprintf(stderr, "Invalid netmask: %s\n", optarg);
                 return -1;
             }
@@ -153,16 +148,22 @@ int parse_args(int argc, char** argv, struct net* net_config_out)
         case 'p':
             {
                 string eth_port_mac_address_str = optarg;
+                memset(args_out->eth_port_mac_address.addr_bytes, 0, ETHER_ADDR_LEN);
+
+                //delete : seperator if it exists
                 auto erase_iter = remove(eth_port_mac_address_str.begin(), eth_port_mac_address_str.end(), ':');
                 eth_port_mac_address_str.erase(erase_iter, eth_port_mac_address_str.end());
+
                 if(eth_port_mac_address_str.size() != ETHER_ADDR_LEN*2) {
                     fprintf(stderr, "Invalid length for ether MAC: %s\n", optarg);
                     return -1;
                 }
+
+                //parse and read MAC address
                 for(unsigned int i = 0; i < ETHER_ADDR_LEN; i++) {
                     char* end_str;
                     string byte = eth_port_mac_address_str.substr(i*2, 2);
-                    eth_port_mac_address.addr_bytes[i] = strtol(byte.c_str(), &end_str, 16);
+                    args_out->eth_port_mac_address.addr_bytes[i] = strtol(byte.c_str(), &end_str, 16);
                     if(end_str == byte.c_str()) {
                         fprintf(stderr, "Invalid ether MAC: %s\n", optarg);
                         return -1;
@@ -172,11 +173,11 @@ int parse_args(int argc, char** argv, struct net* net_config_out)
             count += 2;
             break;
         case 'f':
-            input_filepath = optarg;
+            args_out->input_filepath = optarg;
             count += 2;
             break;
         case 'L':
-            list_ether_addresses = true;
+            args_out->list_ether_addresses = true;
             count += 1;
             break;
         case '?':
@@ -197,7 +198,7 @@ int parse_args(int argc, char** argv, struct net* net_config_out)
     }
 
     char missing_flag = streqchr(missing_required_flags, '-');
-    if(missing_flag != '\0' && !list_ether_addresses) {
+    if(missing_flag != '\0' && !args_out->list_ether_addresses) {
         fprintf(stderr, "Missing required flag -%c\n", missing_flag);
         return -1;
     }
@@ -205,45 +206,32 @@ int parse_args(int argc, char** argv, struct net* net_config_out)
     return count;
 }
 
-#define IP4_OR_NULL(ip_addr) ((ip_addr).addr == IPADDR_ANY ? 0 : &(ip_addr))
-
 static int
-create_eth_port(struct net_port *net_port, int socket_id)
+create_eth_port(struct netif *netif, int socket_id, int port_id, ip_addr_t *ip_addr, ip_addr_t *netmask, ip_addr_t *gw)
 {
-    struct net *net = &net_port->net;
+    struct ethif *ethif = NULL;
     struct rte_port_eth_params params = {};
 
-    params.port_id = net->port_id;
+    params.port_id = port_id;
     params.nb_rx_desc = RTE_TEST_RX_DESC_DEFAULT;
     params.nb_tx_desc = RTE_TEST_TX_DESC_DEFAULT;
     params.mempool = pktmbuf_pool;
     params.eth_conf.link_speeds = ETH_LINK_SPEED_AUTONEG;
 
-
-    struct ethif *ethif;
-    struct netif *netif;
+    memset(netif, 0, sizeof(struct netif));
 
     ethif = ethif_alloc(socket_id);
+
     if (ethif == NULL)
         rte_exit(EXIT_FAILURE, "Cannot alloc eth port\n");
 
-    if (ethif_init(ethif, &params, socket_id, net_port) != ERR_OK)
+    if (ethif_init(ethif, &params, socket_id) != ERR_OK)
         rte_exit(EXIT_FAILURE, "Cannot init eth port\n");
 
-    struct ether_addr mac_addr;
-    rte_eth_macaddr_get(net_port->net.port_id, &mac_addr);
-
-    netif = &ethif->netif;
-
-    memcpy(netif->hwaddr, mac_addr.addr_bytes, ETHER_ADDR_LEN);
-    netif->hwaddr_len = ETHER_ADDR_LEN;
-
-    rte_eth_promiscuous_enable(net_port->net.port_id);
-
     netif_add(netif,
-          IP4_OR_NULL(net->ip_addr),
-          IP4_OR_NULL(net->netmask),
-          IP4_OR_NULL(net->gw),
+          ip_addr,
+          netmask,
+          gw,
           ethif,
           ethif_added_cb,
           ethernet_input);
@@ -261,6 +249,8 @@ void interrupt_handler(int sig){
 
 int main(int argc, char** argv) {
     int ret;
+    struct netif netif;
+    struct program_args args;
 
     int nr_ports; //TODO
 
@@ -269,7 +259,7 @@ int main(int argc, char** argv) {
     lwip_init();
 
     //parse command line arguments for app
-    ret = parse_args(argc, argv, &net_port.net);
+    ret = parse_args(argc, argv, &args);
 
     if(ret < 0) {
         rte_exit(EXIT_FAILURE, "Invalid arguments\n");
@@ -277,6 +267,11 @@ int main(int argc, char** argv) {
 
     argc -= ret;
     argv += ret;
+    if(argc > 1 && strcmp(argv[1], "--") == 0) {
+        //support seperation of EAL arguments by --
+        argc -= 1;
+        argv += 1;
+    }
 
     //parse command line args for dpdk
     RTE_LOG(INFO, APP, "Setting up dpdk...\n");
@@ -293,7 +288,7 @@ int main(int argc, char** argv) {
     
     RTE_LOG(INFO, APP, "Found %d ethernet devices\n", nr_eth_dev);
     
-    if(list_ether_addresses) {
+    if(args.list_ether_addresses) {
         for(uint8_t i = 0; i < nr_eth_dev; i++) {
             struct ether_addr mac_addr;
             rte_eth_macaddr_get(i, &mac_addr);
@@ -335,7 +330,7 @@ int main(int argc, char** argv) {
         }
         printf("\n");
         
-        if(memcmp(eth_port_mac_address.addr_bytes, mac_addr.addr_bytes, ETHER_ADDR_LEN) == 0) {
+        if(memcmp(args.eth_port_mac_address.addr_bytes, mac_addr.addr_bytes, ETHER_ADDR_LEN) == 0) {
             found_eth_port_for_mac = i;
 
             struct rte_eth_dev_info dev_info;
@@ -355,39 +350,42 @@ int main(int argc, char** argv) {
     if(found_eth_port_for_mac < 0) {
         rte_exit(EXIT_FAILURE, "Requested ethernet device not found\n");
     }
-    net_port.net.port_id = (uint8_t)found_eth_port_for_mac;
+
+    uint8_t port_id = (uint8_t)found_eth_port_for_mac;
 
     mempool_init(rte_socket_id());
 
-    if(net_port.net.port_id >= nr_eth_dev) {
+    if(port_id >= nr_eth_dev) {
         rte_exit(EXIT_FAILURE, "Invalid ethernet device\n");
     }
 
-    create_eth_port(&net_port, 0);
+    create_eth_port(&netif, rte_socket_id(), port_id, &args.ip_addr, &args.netmask, NULL);
+    struct ethif* ethif = netif_dpdk_ethif(&netif);
 
     //static ARP entry for testing
-    ip_addr_t arp_ipaddr;
+    /*ip_addr_t arp_ipaddr;
     struct eth_addr arp_ethaddr = {
         .addr = {0x68, 0x05, 0xca, 0x3a, 0xa3, 0x5c}
     };
     parse_addr("10.1.0.2", &arp_ipaddr);
 
-    etharp_add_static_entry(&arp_ipaddr, &arp_ethaddr);
+    etharp_add_static_entry(&arp_ipaddr, &arp_ethaddr);*/
 
-    RTE_LOG(INFO, APP, "Created eth port with ID %d\n", net_port.net.port_id);
-    RTE_LOG(INFO, APP, "\tIP: %s\n", ipaddr_ntoa(&net_port.net.ip_addr));
-    RTE_LOG(INFO, APP, "\tNetmask: %s\n", ipaddr_ntoa(&net_port.net.netmask));
+    RTE_LOG(INFO, APP, "Created eth port with ID %d\n", ethif->eth_port->port_id);
+    RTE_LOG(INFO, APP, "\tIP: %s\n", ipaddr_ntoa(&netif.ip_addr));
+    RTE_LOG(INFO, APP, "\tNetmask: %s\n", ipaddr_ntoa(&netif.netmask));
 
     RTE_LOG(INFO, APP, "Binding port...\n");
     connection = tcp_new();
     err_t tcp_ret;
-    tcp_ret = tcp_bind(connection, &net_port.net.ip_addr, rand() % 1000 + 3000 /* bind to some random default port */);
+    tcp_ret = tcp_bind(connection, &netif.ip_addr, rand() % 1000 + 3000 /* bind to some random default port */);
     if(tcp_ret != ERR_OK) {
         RTE_LOG(ERR, APP, "Failed to bind connection: %d\n", tcp_ret);
     }
     RTE_LOG(INFO, APP, "Setting up connecting...\n");
 
-    tcp_ret = tcp_connect(connection, &ipaddr, port, [](void* arg, struct tcp_pcb*, err_t err) -> err_t {
+    tcp_sent(connection, callback_sent); //set callback for acknowledgment
+    tcp_ret = tcp_connect(connection, &args.dest_ip, args.dest_port, [](void* arg, struct tcp_pcb*, err_t err) -> err_t {
         if(err == ERR_OK) {
             RTE_LOG(INFO, APP, "Established connection\n");
             connected = true;
@@ -400,14 +398,11 @@ int main(int argc, char** argv) {
     });
     tcp_recv(connection, callback_ui_output);
 
-    struct net_port ports[1] = {
-        net_port,
-    };
-
     RTE_LOG(INFO, APP, "Starting net io input loop...\n");
-    dispatch_netio_thread(ports, 1, PKT_BURST_SZ);
+    dispatch_netio_thread(&netif, PKT_BURST_SZ, args.input_filepath);
     RTE_LOG(INFO, APP, "Net io input finished\n");
 
+    mempool_release();
     rte_exit(EXIT_SUCCESS, "Finished\n");
 }
 
@@ -416,26 +411,19 @@ static int
 dispatch_to_ethif(struct netif *netif,
           struct rte_mbuf **pkts, uint32_t n_pkts)
 {
-    struct ethif *ethif = (struct ethif *)netif->state;
     uint32_t i;
 
     for (i = 0; i < n_pkts; i++)
-        ethif_input(ethif, pkts[i]);
+        ethif_input(netif, pkts[i]);
 
     return n_pkts;
 }
 
 static int
-dispatch(struct net_port *ports, int nr_ports,
-     struct rte_mbuf **pkts, uint32_t pkt_burst_sz)
+dispatch(struct netif *netif, struct rte_mbuf **pkts, uint32_t pkt_burst_sz)
 {
-    struct net_port *net_port;
-    struct rte_port *rte_port;
-    struct netif *netif;
-    int i;
+    struct rte_port_eth* rte_eth_port = netif_dpdk_ethif(netif)->eth_port;
     uint32_t n_pkts;
-
-    //static auto last_time_called = steady_clock::now();
 
     /*
      * From lwip/src/core/timers.c:
@@ -444,44 +432,31 @@ dispatch(struct net_port *ports, int nr_ports,
      */
     sys_check_timeouts();
 
-    for (i = 0; i < nr_ports; i++) {
-        net_port = &ports[i];
-        rte_port = net_port->rte_port;
-
-        n_pkts = rte_port->ops.rx_burst(rte_port, pkts, pkt_burst_sz);
-        if (unlikely(n_pkts > pkt_burst_sz)) {
-            printf("n_pkts > pkt_burst_sz\n");
-            continue;
-        }
-
-        /*if (n_pkts == 0) {
-            printf("[%s] n_pkts == 0\n", TIMESTR());
-            continue;
-        }*/
-
-        //auto duration_since_last_called = steady_clock::now() - last_time_called;
-        //double duration_since_last_called_msec = std::chrono::duration_cast<std::chrono::milliseconds>(duration_since_last_called).count();
-        //if(duration_since_last_called_msec > 500.0) {
-        //    printf("Not called since %g msec\n", duration_since_last_called_msec);
-        //}
-        //last_time_called = steady_clock::now();
-
-        netif = net_port->netif;
-        dispatch_to_ethif(netif, pkts, n_pkts);
+    n_pkts = rte_eth_port->ops.rx_burst(rte_eth_port, pkts, pkt_burst_sz);
+    if (unlikely(n_pkts > pkt_burst_sz)) {
+        printf("n_pkts > pkt_burst_sz\n");
+        return 0;
     }
+
+    dispatch_to_ethif(netif, pkts, n_pkts);
+
     return 0;
 }
 
 int
-dispatch_netio_thread(struct net_port *ports, int nr_ports, int pkt_burst_sz)
+dispatch_netio_thread(struct netif *netif, int pkt_burst_sz, string input_filepath)
 {
     struct rte_mbuf *pkts[pkt_burst_sz];
     int ret_dispatch = 0;
     int ret_io = 0;
-    ui_input_state input_state = {0};
+    ui_input_state input_state = {};
+
+    input_state.input_filepath = input_filepath;
+
+    duration_start(&duration_bytes_sent);
 
     while (!quit) {
-        ret_dispatch = dispatch(ports, nr_ports, pkts, pkt_burst_sz);
+        ret_dispatch = dispatch(netif, pkts, pkt_burst_sz);
         if(ret_dispatch < 0) {
             break;
         }
@@ -496,14 +471,12 @@ dispatch_netio_thread(struct net_port *ports, int nr_ports, int pkt_burst_sz)
 int
 dispatch_ui_input(ui_input_state* state)
 {
-    //static auto last_time_send = steady_clock::now();
-
     if(state->f == NULL) {
-        if(input_filepath == "-") {
+        if(state->input_filepath == "-") {
             state->f = stdin;
         }
         else {
-            state->f = fopen(input_filepath.c_str(), "r");
+            state->f = fopen(state->input_filepath.c_str(), "r");
         }
 
         if(state->f == NULL) {
@@ -515,7 +488,6 @@ dispatch_ui_input(ui_input_state* state)
     if(!feof(state->f)) {
         u16_t available = tcp_sndbuf(connection);
         if(available == 0) {
-            //printf("no space in queue left\n");
             return 0; //back off and try again later
         }
         u16_t send_count = min(available, (u16_t)BUFFER_SIZE);
@@ -524,25 +496,14 @@ dispatch_ui_input(ui_input_state* state)
             return 0;
         }
 
-        //auto duration_since_last_send = steady_clock::now() - last_time_send;
-        //double duration_since_last_send_msec = std::chrono::duration_cast<std::chrono::milliseconds>(duration_since_last_send).count();
-        //if(duration_since_last_send_msec > 500.0) {
-        //    printf("No data send since %g msec\n", duration_since_last_send_msec);
-        //}
-        //last_time_send = steady_clock::now();
-
-        //printf("trying to read %d bytes ", (int)send_count);
         size_t bytes_read = fread(state->buffer, 1, send_count, state->f);
         
-        //printf("and read %d bytes, sending now...", (int)bytes_read);
         int flags = TCP_WRITE_FLAG_COPY;
         if(bytes_read == send_count) {
             flags |= TCP_WRITE_FLAG_MORE;
         }
         tcp_write(connection, state->buffer, (u16_t)bytes_read, flags);
         tcp_output(connection);
-
-        //printf("done\n");
 
         return 0;
     }
@@ -553,6 +514,25 @@ dispatch_ui_input(ui_input_state* state)
 
         return -2;
     }
+}
+
+err_t callback_sent(void * arg, struct tcp_pcb * tpcb,
+                   u16_t len)
+{
+    static uint64_t sum_bytes_sent = 0;
+
+    sum_bytes_sent += len;
+
+    if(sum_bytes_sent % (10ULL*1024ULL*1024ULL) == 0 && sum_bytes_sent > 0) {
+        duration_stop(&duration_bytes_sent);
+
+        printf("\033[A\033[2KSpeed: %f MBits/s\n", sum_bytes_sent*8.0 / duration_as_sec(&duration_bytes_sent) / (1e6));
+
+        sum_bytes_sent = 0;
+        duration_start(&duration_bytes_sent);
+    }
+
+    return ERR_OK;
 }
 
 err_t callback_ui_output(void * arg, struct tcp_pcb * tpcb,

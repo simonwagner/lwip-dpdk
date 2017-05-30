@@ -174,7 +174,7 @@
 /**
  * PBUF_POOL_SIZE: the number of buffers in the pbuf pool.
  */
-#define PBUF_POOL_SIZE                  32
+#define PBUF_POOL_SIZE                  1024
 
 /*
    ---------------------------------
@@ -355,9 +355,9 @@
  */
 #define LWIP_TCP                        1
 #define TCP_MSS                         1460
-#define TCP_SND_BUF                     (44*TCP_MSS)
+#define TCP_SND_BUF                     65535
 #define MEMP_NUM_TCP_SEG                ((4 * (TCP_SND_BUF) + (TCP_MSS - 1))/(TCP_MSS))
-//#define TCP_WND                         (10*1024)
+#define TCP_WND                         65535
 
 /*
    ----------------------------------

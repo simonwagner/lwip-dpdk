@@ -43,8 +43,7 @@ static struct rte_port_ops rte_port_eth_ops;
 
 struct rte_port_eth *
 rte_port_eth_create(struct rte_port_eth_params *conf,
-		    int socket_id,
-		    struct net_port *net_port)
+            int socket_id)
 {
 	struct rte_port_eth *port;
 	uint8_t port_id = conf->port_id;
@@ -58,7 +57,7 @@ rte_port_eth_create(struct rte_port_eth_params *conf,
 	}
 
 	port->port_id = port_id;
-	port->rte_port.ops = rte_port_eth_ops;
+    port->ops = rte_port_eth_ops;
 
 	ret = rte_eth_dev_configure(port_id, 1, 1, &conf->eth_conf);
 	if (ret < 0) {
@@ -98,21 +97,16 @@ rte_port_eth_create(struct rte_port_eth_params *conf,
 
 	rte_eth_dev_info_get(port_id, &port->eth_dev_info);
 
-	net_port->rte_port = &port->rte_port;
-
 	return port;
 }
 
 int
-rte_port_eth_rx_burst(struct rte_port *rte_port,
+rte_port_eth_rx_burst(struct rte_port_eth *rte_port_eth,
 		      struct rte_mbuf **pkts, uint32_t n_pkts)
 {
-	struct rte_port_eth *p;
 	int rx;
 
-	p = container_of(rte_port, struct rte_port_eth, rte_port);
-
-	rx = rte_eth_rx_burst(p->port_id, 0, pkts, n_pkts);
+    rx = rte_eth_rx_burst(rte_port_eth->port_id, 0, pkts, n_pkts);
 	if (unlikely(rx > n_pkts)) {
                 RTE_LOG(ERR, PORT, "Failed to rx eth burst\n");
 		return rx;
@@ -126,15 +120,12 @@ rte_port_eth_rx_burst(struct rte_port *rte_port,
  *         the underlying device, otherwise free all here
  */
 int
-rte_port_eth_tx_burst(struct rte_port *rte_port,
+rte_port_eth_tx_burst(struct rte_port_eth *rte_port_eth,
 		      struct rte_mbuf **pkts, uint32_t n_pkts)
 {
-	struct rte_port_eth *p;
 	int tx;
 
-	p = container_of(rte_port, struct rte_port_eth, rte_port);
-
-	tx = rte_eth_tx_burst(p->port_id, 0, pkts, n_pkts);
+    tx = rte_eth_tx_burst(rte_port_eth->port_id, 0, pkts, n_pkts);
 
 	if (unlikely(tx < n_pkts)) {
 		for (; tx < n_pkts; tx++) {
