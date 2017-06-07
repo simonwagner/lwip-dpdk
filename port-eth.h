@@ -39,19 +39,19 @@
 extern "C" {
 #endif
 
-struct rte_port_eth;
+struct lwip_dpdk_port_eth;
 
-typedef int (*rte_port_op_rx_burst)
-    (struct rte_port_eth *rte_port, struct rte_mbuf **pkts, uint32_t n_pkts);
-typedef int (*rte_port_op_tx_burst)
-    (struct rte_port_eth *rte_port, struct rte_mbuf **pkts, uint32_t n_pkts);
+typedef int (*lwip_dpdk_port_op_rx_burst)
+    (struct lwip_dpdk_port_eth *rte_port, struct rte_mbuf **pkts, uint32_t n_pkts);
+typedef int (*lwip_dpdk_port_op_tx_burst)
+    (struct lwip_dpdk_port_eth *rte_port, struct rte_mbuf **pkts, uint32_t n_pkts);
 
-struct rte_port_ops {
-    rte_port_op_rx_burst	rx_burst;
-    rte_port_op_tx_burst	tx_burst;
+struct lwip_dpdk_port_ops {
+    lwip_dpdk_port_op_rx_burst	rx_burst;
+    lwip_dpdk_port_op_tx_burst	tx_burst;
 };
 
-struct rte_port_eth_params {
+struct lwip_dpdk_port_eth_params {
 	uint8_t			 port_id;
 	uint16_t		 nb_rx_desc;
 	uint16_t		 nb_tx_desc;
@@ -61,16 +61,16 @@ struct rte_port_eth_params {
 	struct rte_mempool	*mempool;
 };
 
-struct rte_port_eth {
+struct lwip_dpdk_port_eth {
     uint8_t			         port_id;
 	struct rte_eth_dev_info	 eth_dev_info;
-    struct rte_port_ops	     ops;
+    struct lwip_dpdk_port_ops	     ops;
 };
 
-struct rte_port_eth * rte_port_eth_create
-    (struct rte_port_eth_params *conf, int socket_id);
-int rte_port_eth_tx_burst
-    (struct rte_port_eth *rte_port, struct rte_mbuf **pkts, uint32_t n_pkts);
+struct lwip_dpdk_port_eth * lwip_dpdk_port_eth_create
+    (struct lwip_dpdk_port_eth_params *conf, int socket_id);
+int lwip_dpdk_port_eth_tx_burst
+    (struct lwip_dpdk_port_eth *rte_port, struct rte_mbuf **pkts, uint32_t n_pkts);
 
 #ifdef __cplusplus
 }

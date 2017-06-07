@@ -39,17 +39,17 @@ extern "C" {
 
 #include "port-eth.h"
 
-struct ethif {
-	struct rte_port_eth	*eth_port;
+struct lwip_dpdk_ethif {
+    struct lwip_dpdk_port_eth	*eth_port;
 };
 
-static inline struct ethif* netif_dpdk_ethif(struct netif *netif)
+static inline struct lwip_dpdk_ethif* netif_dpdk_ethif(struct netif *netif)
 {
-    return (struct ethif*)netif->state;
+    return (struct lwip_dpdk_ethif*)netif->state;
 }
 
-struct ethif * ethif_alloc(int socket_id);
-err_t ethif_init(struct ethif *ethif, struct rte_port_eth_params *params,
+struct lwip_dpdk_ethif * ethif_alloc(int socket_id);
+err_t ethif_init(struct lwip_dpdk_ethif *lwip_dpdk_ethif, struct lwip_dpdk_port_eth_params *params,
          int socket_id);
 err_t ethif_input(struct netif *netif, struct rte_mbuf *pkt);
 err_t ethif_added_cb(struct netif *netif);

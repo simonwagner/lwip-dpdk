@@ -209,8 +209,8 @@ int parse_args(int argc, char** argv, struct program_args*  args_out)
 static int
 create_eth_port(struct netif *netif, int socket_id, int port_id, ip_addr_t *ip_addr, ip_addr_t *netmask, ip_addr_t *gw)
 {
-    struct ethif *ethif = NULL;
-    struct rte_port_eth_params params = {};
+    struct lwip_dpdk_ethif *ethif = NULL;
+    struct lwip_dpdk_port_eth_params params = {};
 
     params.port_id = port_id;
     params.nb_rx_desc = RTE_TEST_RX_DESC_DEFAULT;
@@ -360,7 +360,7 @@ int main(int argc, char** argv) {
     }
 
     create_eth_port(&netif, rte_socket_id(), port_id, &args.ip_addr, &args.netmask, NULL);
-    struct ethif* ethif = netif_dpdk_ethif(&netif);
+    struct lwip_dpdk_ethif* ethif = netif_dpdk_ethif(&netif);
 
     //static ARP entry for testing
     /*ip_addr_t arp_ipaddr;
@@ -422,7 +422,7 @@ dispatch_to_ethif(struct netif *netif,
 static int
 dispatch(struct netif *netif, struct rte_mbuf **pkts, uint32_t pkt_burst_sz)
 {
-    struct rte_port_eth* rte_eth_port = netif_dpdk_ethif(netif)->eth_port;
+    struct lwip_dpdk_port_eth* rte_eth_port = netif_dpdk_ethif(netif)->eth_port;
     uint32_t n_pkts;
 
     /*

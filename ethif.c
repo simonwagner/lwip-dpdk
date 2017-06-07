@@ -51,22 +51,22 @@
 
 
 
-struct ethif *
+struct lwip_dpdk_ethif *
 ethif_alloc(int socket_id)
 {
-	struct ethif *ethif;
+    struct lwip_dpdk_ethif *lwip_dpdk_ethif;
 
-	ethif = rte_zmalloc_socket("ETHIF", sizeof(ethif), RTE_CACHE_LINE_SIZE,
+    lwip_dpdk_ethif = rte_zmalloc_socket("ETHIF", sizeof(lwip_dpdk_ethif), RTE_CACHE_LINE_SIZE,
 				   socket_id);
-	return ethif;
+    return lwip_dpdk_ethif;
 }
 
 err_t
-ethif_init(struct ethif *ethif, struct rte_port_eth_params *params,
+ethif_init(struct lwip_dpdk_ethif *lwip_dpdk_ethif, struct lwip_dpdk_port_eth_params *params,
        int socket_id)
 {
-    ethif->eth_port = rte_port_eth_create(params, socket_id);
-	if (!ethif->eth_port)
+    lwip_dpdk_ethif->eth_port = lwip_dpdk_port_eth_create(params, socket_id);
+    if (!lwip_dpdk_ethif->eth_port)
 		return ERR_MEM;
 
 	return ERR_OK;
@@ -106,12 +106,12 @@ ethif_input(struct netif *netif, struct rte_mbuf *m)
 static err_t
 low_level_output(struct netif *netif, struct pbuf *p)
 {
-	struct ethif *ethif = (struct ethif *)netif->state;
-	struct rte_port_eth *eth_port;
+    struct lwip_dpdk_ethif *lwip_dpdk_ethif = (struct lwip_dpdk_ethif *)netif->state;
+	struct lwip_dpdk_port_eth *eth_port;
 	struct rte_mbuf *m;
 	struct pbuf *q;
 
-	eth_port = ethif->eth_port;
+    eth_port = lwip_dpdk_ethif->eth_port;
 
 	m = rte_pktmbuf_alloc(pktmbuf_pool);
 	if (m == NULL)
@@ -126,7 +126,7 @@ low_level_output(struct netif *netif, struct pbuf *p)
 		rte_memcpy(data, q->payload, q->len);
 	}
 
-    int ret = rte_port_eth_tx_burst(eth_port, &m, 1);
+    int ret = lwip_dpdk_port_eth_tx_burst(eth_port, &m, 1);
 
 	return ERR_OK;
 }
@@ -134,7 +134,7 @@ low_level_output(struct netif *netif, struct pbuf *p)
 err_t
 ethif_added_cb(struct netif *netif)
 {
-	struct ethif *ethif = (struct ethif *)netif->state;
+    struct lwip_dpdk_ethif *lwip_dpdk_ethif = (struct lwip_dpdk_ethif *)netif->state;
 
 	netif->name[0] = 'e';
 	netif->name[1] = 't';
@@ -145,11 +145,11 @@ ethif_added_cb(struct netif *netif)
 
     //set mac address
     struct ether_addr mac_addr;
-    rte_eth_macaddr_get(ethif->eth_port->port_id, &mac_addr);
+    rte_eth_macaddr_get(lwip_dpdk_ethif->eth_port->port_id, &mac_addr);
     memcpy(netif->hwaddr, mac_addr.addr_bytes, ETHER_ADDR_LEN);
     netif->hwaddr_len = ETHER_ADDR_LEN;
 
-    rte_eth_promiscuous_enable(ethif->eth_port->port_id);
+    rte_eth_promiscuous_enable(lwip_dpdk_ethif->eth_port->port_id);
 
 	return ERR_OK;
 }

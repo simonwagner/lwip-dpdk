@@ -39,13 +39,13 @@
 
 #include "port-eth.h"
 
-static struct rte_port_ops rte_port_eth_ops;
+static struct lwip_dpdk_port_ops lwip_dpdk_port_eth_ops;
 
-struct rte_port_eth *
-rte_port_eth_create(struct rte_port_eth_params *conf,
+struct lwip_dpdk_port_eth *
+lwip_dpdk_port_eth_create(struct lwip_dpdk_port_eth_params *conf,
             int socket_id)
 {
-	struct rte_port_eth *port;
+	struct lwip_dpdk_port_eth *port;
 	uint8_t port_id = conf->port_id;
 	int ret;
 
@@ -57,7 +57,7 @@ rte_port_eth_create(struct rte_port_eth_params *conf,
 	}
 
 	port->port_id = port_id;
-    port->ops = rte_port_eth_ops;
+    port->ops = lwip_dpdk_port_eth_ops;
 
 	ret = rte_eth_dev_configure(port_id, 1, 1, &conf->eth_conf);
 	if (ret < 0) {
@@ -101,12 +101,12 @@ rte_port_eth_create(struct rte_port_eth_params *conf,
 }
 
 int
-rte_port_eth_rx_burst(struct rte_port_eth *rte_port_eth,
+lwip_dpdk_port_eth_rx_burst(struct lwip_dpdk_port_eth *lwip_dpdk_port_eth,
 		      struct rte_mbuf **pkts, uint32_t n_pkts)
 {
 	int rx;
 
-    rx = rte_eth_rx_burst(rte_port_eth->port_id, 0, pkts, n_pkts);
+    rx = rte_eth_rx_burst(lwip_dpdk_port_eth->port_id, 0, pkts, n_pkts);
 	if (unlikely(rx > n_pkts)) {
                 RTE_LOG(ERR, PORT, "Failed to rx eth burst\n");
 		return rx;
@@ -120,12 +120,12 @@ rte_port_eth_rx_burst(struct rte_port_eth *rte_port_eth,
  *         the underlying device, otherwise free all here
  */
 int
-rte_port_eth_tx_burst(struct rte_port_eth *rte_port_eth,
+lwip_dpdk_port_eth_tx_burst(struct lwip_dpdk_port_eth *lwip_dpdk_port_eth,
 		      struct rte_mbuf **pkts, uint32_t n_pkts)
 {
 	int tx;
 
-    tx = rte_eth_tx_burst(rte_port_eth->port_id, 0, pkts, n_pkts);
+    tx = rte_eth_tx_burst(lwip_dpdk_port_eth->port_id, 0, pkts, n_pkts);
 
 	if (unlikely(tx < n_pkts)) {
 		for (; tx < n_pkts; tx++) {
@@ -135,7 +135,7 @@ rte_port_eth_tx_burst(struct rte_port_eth *rte_port_eth,
 	return tx;
 }
 
-static struct rte_port_ops rte_port_eth_ops = {
-	.rx_burst = rte_port_eth_rx_burst,
-	.tx_burst = rte_port_eth_tx_burst
+static struct lwip_dpdk_port_ops lwip_dpdk_port_eth_ops = {
+    .rx_burst = lwip_dpdk_port_eth_rx_burst,
+    .tx_burst = lwip_dpdk_port_eth_tx_burst
 };
