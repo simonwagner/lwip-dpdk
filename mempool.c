@@ -37,28 +37,64 @@
 #include "main.h"
 #include "mempool.h"
 
-struct rte_mempool *pktmbuf_pool = NULL;
+#define LWIP_DPDK_MAX_SOCKETS 16
+
+struct rte_mempool* pktmbuf_pools[LWIP_DPDK_MAX_SOCKETS] = {};
+const char* pkt_mbuf_pool_names[LWIP_DPDK_MAX_SOCKETS] = {
+    "pktmbuf_pool_socket_00",
+    "pktmbuf_pool_socket_01",
+    "pktmbuf_pool_socket_02",
+    "pktmbuf_pool_socket_03",
+    "pktmbuf_pool_socket_04",
+    "pktmbuf_pool_socket_05",
+    "pktmbuf_pool_socket_06",
+    "pktmbuf_pool_socket_07",
+    "pktmbuf_pool_socket_08",
+    "pktmbuf_pool_socket_09",
+    "pktmbuf_pool_socket_10",
+    "pktmbuf_pool_socket_11",
+    "pktmbuf_pool_socket_12",
+    "pktmbuf_pool_socket_13",
+    "pktmbuf_pool_socket_14",
+    "pktmbuf_pool_socket_15",
+};
 
 int
-mempool_init(int socket_id)
+lwip_dpdk_pktmbuf_pool_create_all(int max_socket_id)
 {
-	pktmbuf_pool = rte_mempool_create(
-		"pktmbuf_pool", NB_MBUF, MBUF_SZ, MEMPOOL_CACHE_SZ,
-		sizeof(struct rte_pktmbuf_pool_private),
-		rte_pktmbuf_pool_init, NULL, rte_pktmbuf_init, NULL,
-		socket_id, 0);
-	if (!pktmbuf_pool)
-		rte_panic("Cannot init mbuf pool\n");
+    if(max_socket_id >= LWIP_DPDK_MAX_SOCKETS) {
+        rte_panic("max_socket_id is too large, you are only allowed a maximum of %d sockets", LWIP_DPDK_MAX_SOCKETS);
+        return -1;
+    }
 
-	return 0;
-}
+    int i;
+    for(i = 0; i <= max_socket_id; i++) {
+        struct rte_mempool* pktmbuf_pool;
 
-int
-mempool_release()
-{
-    if(pktmbuf_pool != NULL) {
-        rte_mempool_free(pktmbuf_pool);
+        pktmbuf_pool = rte_mempool_create(
+            pkt_mbuf_pool_names[i], NB_MBUF, MBUF_SZ, MEMPOOL_CACHE_SZ,
+            sizeof(struct rte_pktmbuf_pool_private),
+            rte_pktmbuf_pool_init, NULL, rte_pktmbuf_init, NULL,
+            i, 0);
+
+        if (!pktmbuf_pool) {
+            rte_panic("Cannot create pktmbuf pool\n");
+            return -1;
+        }
+
+        pktmbuf_pools[i] = pktmbuf_pool;
     }
 
     return 0;
+}
+
+struct rte_mempool*
+lwip_dpdk_pktmbuf_pool_get(int socket_id)
+{
+    if(socket_id >= LWIP_DPDK_MAX_SOCKETS) {
+        rte_panic("socket_id is too large, you are only allowed a maximum of %d sockets", LWIP_DPDK_MAX_SOCKETS);
+        return NULL;
+    }
+
+    return pktmbuf_pools[socket_id];
 }

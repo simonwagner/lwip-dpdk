@@ -209,31 +209,37 @@ int parse_args(int argc, char** argv, struct program_args*  args_out)
 static int
 create_eth_port(struct netif *netif, int socket_id, int port_id, ip_addr_t *ip_addr, ip_addr_t *netmask, ip_addr_t *gw)
 {
-    struct lwip_dpdk_ethif *ethif = NULL;
+    struct lwip_dpdk_port_eth *port = NULL;
+    struct lwip_dpdk_queue_eth *queue = NULL;
     struct lwip_dpdk_port_eth_params params = {};
 
     params.port_id = port_id;
     params.nb_rx_desc = RTE_TEST_RX_DESC_DEFAULT;
     params.nb_tx_desc = RTE_TEST_TX_DESC_DEFAULT;
-    params.mempool = pktmbuf_pool;
     params.eth_conf.link_speeds = ETH_LINK_SPEED_AUTONEG;
 
     memset(netif, 0, sizeof(struct netif));
 
-    ethif = ethif_alloc(socket_id);
-
-    if (ethif == NULL)
+    port = lwip_dpdk_port_eth_create(&params);
+    if(port == NULL) {
         rte_exit(EXIT_FAILURE, "Cannot alloc eth port\n");
+    }
 
-    if (ethif_init(ethif, &params, socket_id) != ERR_OK)
-        rte_exit(EXIT_FAILURE, "Cannot init eth port\n");
+    queue = ethif_queue_create(port, socket_id, 0);
+    if(queue == NULL) {
+        rte_exit(EXIT_FAILURE, "Cannot alloc eth queue\n");
+    }
+
+    if(lwip_dpdk_port_eth_start(port) != 0) {
+        rte_exit(EXIT_FAILURE, "Cannot start port\n");
+    }
 
     netif_add(netif,
           ip_addr,
           netmask,
           gw,
-          ethif,
-          ethif_added_cb,
+          queue,
+          ethif_queue_added_cb,
           ethernet_input);
 
     netif_set_link_up(netif);
@@ -353,14 +359,14 @@ int main(int argc, char** argv) {
 
     uint8_t port_id = (uint8_t)found_eth_port_for_mac;
 
-    mempool_init(rte_socket_id());
+    lwip_dpdk_pktmbuf_pool_create_all(rte_socket_id());
 
     if(port_id >= nr_eth_dev) {
         rte_exit(EXIT_FAILURE, "Invalid ethernet device\n");
     }
 
     create_eth_port(&netif, rte_socket_id(), port_id, &args.ip_addr, &args.netmask, NULL);
-    struct lwip_dpdk_ethif* ethif = netif_dpdk_ethif(&netif);
+    struct lwip_dpdk_queue_eth* ethif = netif_dpdk_ethif(&netif);
 
     //static ARP entry for testing
     /*ip_addr_t arp_ipaddr;
@@ -402,7 +408,6 @@ int main(int argc, char** argv) {
     dispatch_netio_thread(&netif, PKT_BURST_SZ, args.input_filepath);
     RTE_LOG(INFO, APP, "Net io input finished\n");
 
-    mempool_release();
     rte_exit(EXIT_SUCCESS, "Finished\n");
 }
 
@@ -414,7 +419,7 @@ dispatch_to_ethif(struct netif *netif,
     uint32_t i;
 
     for (i = 0; i < n_pkts; i++)
-        ethif_input(netif, pkts[i]);
+        ethif_queue_input(netif, pkts[i]);
 
     return n_pkts;
 }
@@ -422,7 +427,7 @@ dispatch_to_ethif(struct netif *netif,
 static int
 dispatch(struct netif *netif, struct rte_mbuf **pkts, uint32_t pkt_burst_sz)
 {
-    struct lwip_dpdk_port_eth* rte_eth_port = netif_dpdk_ethif(netif)->eth_port;
+    struct lwip_dpdk_queue_eth* lwip_dpdk_queue = netif_dpdk_ethif(netif);
     uint32_t n_pkts;
 
     /*
@@ -432,7 +437,7 @@ dispatch(struct netif *netif, struct rte_mbuf **pkts, uint32_t pkt_burst_sz)
      */
     sys_check_timeouts();
 
-    n_pkts = rte_eth_port->ops.rx_burst(rte_eth_port, pkts, pkt_burst_sz);
+    n_pkts = lwip_dpdk_queue->ops.rx_burst(lwip_dpdk_queue, pkts, pkt_burst_sz);
     if (unlikely(n_pkts > pkt_burst_sz)) {
         printf("n_pkts > pkt_burst_sz\n");
         return 0;

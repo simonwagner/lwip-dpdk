@@ -40,10 +40,8 @@
 extern "C" {
 #endif
 
-extern struct rte_mempool *pktmbuf_pool;
-
-int mempool_init(int socket_id);
-int mempool_release();
+struct rte_mempool *lwip_dpdk_pktmbuf_pool_get(int socket_id);
+int lwip_dpdk_pktmbuf_pool_create_all(int max_socket_id);
 
 #ifdef __cplusplus
 }
