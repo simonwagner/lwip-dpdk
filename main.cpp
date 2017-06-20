@@ -56,6 +56,7 @@ struct program_args {
 
 static duration duration_bytes_sent;
 
+static struct lwip_dpdk_global_context* global_context;
 static struct lwip_dpdk_context* context;
 
 int
@@ -257,7 +258,7 @@ int main(int argc, char** argv) {
 
     signal(SIGINT, interrupt_handler);
 
-    lwip_dpdk_init();
+    global_context = lwip_dpdk_init();
 
     //parse command line arguments for app
     ret = parse_args(argc, argv, &args);
@@ -354,7 +355,7 @@ int main(int argc, char** argv) {
 
     uint8_t port_id = (uint8_t)found_eth_port_for_mac;
 
-    context = lwip_dpdk_context_create(0, NULL);
+    context = lwip_dpdk_context_create(global_context, 0, NULL);
     if(context == NULL) {
         rte_exit(EXIT_FAILURE, "Failed to create context\n");
     }
@@ -408,7 +409,7 @@ int main(int argc, char** argv) {
     dispatch_netio_thread(&netif, PKT_BURST_SZ, args.input_filepath);
     RTE_LOG(INFO, APP, "Net io input finished\n");
 
-    lwip_dpdk_context_release_all();
+    lwip_dpdk_close(global_context);
     rte_exit(EXIT_SUCCESS, "Finished\n");
 }
 

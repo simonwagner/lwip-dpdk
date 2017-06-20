@@ -12,6 +12,9 @@
 extern "C" {
 #endif
 
+#define LWIP_DPDK_MAX_COUNT_CONTEXTS 16
+
+
 struct netif;
 struct tcp_pcb;
 
@@ -66,10 +69,12 @@ struct lwip_dpdk_context {
     struct lwip_dpdk_lwip_api* api;
 };
 
-void lwip_dpdk_init();
+struct lwip_dpdk_global_context;
 
-struct lwip_dpdk_context* lwip_dpdk_context_create(uint8_t lcore, struct lwip_dpdk_context* parent_context);
-void lwip_dpdk_context_release_all();
+struct lwip_dpdk_global_context* lwip_dpdk_init();
+void lwip_dpdk_close(struct lwip_dpdk_global_context* global_context);
+
+struct lwip_dpdk_context* lwip_dpdk_context_create(struct lwip_dpdk_global_context* global_context, uint8_t lcore, struct lwip_dpdk_context* parent_context);
 
 #ifdef __cplusplus
 }

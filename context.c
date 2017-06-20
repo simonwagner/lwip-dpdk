@@ -11,13 +11,11 @@
 #define LWIP_DPDK_LOAD_SYMBOL(api, name) LWIP_DPDK_LOAD_SYMBOL_BY_NAME(api, name, name)
 #define LWIP_DPDK_LOAD_PRIVATE_SYMBOL(api, name) LWIP_DPDK_LOAD_SYMBOL_BY_NAME(api, _ ## name, name)
 
-struct lwip_dpdk_context_list_element {
-    struct lwip_dpdk_context* value;
-    struct lwip_dpdk_context_list_element* next;
+struct lwip_dpdk_global_context {
+    pthread_mutex_t mutex;
+    struct lwip_dpdk_context** contexts;
+    int context_count;
 };
-
-static struct lwip_dpdk_context_list_element* context_list_head;
-static pthread_mutex_t context_list_mutex;
 
 static int lwip_dpdk_init_api(struct lwip_dpdk_lwip_api* api, const char* lwip_library_path)
 {
@@ -62,9 +60,15 @@ static int lwip_dpdk_init_api(struct lwip_dpdk_lwip_api* api, const char* lwip_l
     return 0;
 }
 
-void lwip_dpdk_init()
+struct lwip_dpdk_global_context* lwip_dpdk_init()
 {
-    pthread_mutex_init(&context_list_mutex, NULL);
+    struct lwip_dpdk_global_context* global_context = calloc(1, sizeof(struct lwip_dpdk_global_context));
+
+    pthread_mutex_init(&global_context->mutex, NULL);
+
+    global_context->contexts = calloc(LWIP_DPDK_MAX_COUNT_CONTEXTS, sizeof(struct lwip_dpdk_context*));
+
+    return global_context;
 }
 
 static int lwip_dpdk_context_clone_config_from(struct lwip_dpdk_context* context, struct lwip_dpdk_context* parent_context)
@@ -72,15 +76,13 @@ static int lwip_dpdk_context_clone_config_from(struct lwip_dpdk_context* context
     return 0;
 }
 
-struct lwip_dpdk_context* lwip_dpdk_context_create(uint8_t lcore, struct lwip_dpdk_context *parent_context)
+struct lwip_dpdk_context* lwip_dpdk_context_create(struct lwip_dpdk_global_context* global_context, uint8_t lcore, struct lwip_dpdk_context *parent_context)
 {
     struct lwip_dpdk_context* context = calloc(1, sizeof(struct lwip_dpdk_context));
     struct lwip_dpdk_lwip_api* api = calloc(1, sizeof(struct lwip_dpdk_lwip_api));
 
     if(lwip_dpdk_init_api(api, "./liblwip.so") != 0) {
-        free(context);
-        free(api);
-        return NULL;
+        goto fail;
     }
 
     context->api = api;
@@ -88,48 +90,54 @@ struct lwip_dpdk_context* lwip_dpdk_context_create(uint8_t lcore, struct lwip_dp
 
     if(parent_context != NULL) {
         if(lwip_dpdk_context_clone_config_from(context, parent_context) != 0) {
-            free(context);
-            free(api);
-            return NULL;
+            goto fail;
         }
     }
 
     context->api->_lwip_init();
 
     //insert context into context list
-    pthread_mutex_lock(&context_list_mutex);
+    pthread_mutex_lock(&global_context->mutex);
 
-    struct lwip_dpdk_context_list_element* list_element = calloc(1, sizeof(struct lwip_dpdk_context_list_element));
-    list_element->value = context;
-    struct lwip_dpdk_context_list_element** tail_address = &context_list_head;
-    while(*tail_address != NULL) {
-        tail_address = &((*tail_address)->next);
+    if(global_context->context_count >= LWIP_DPDK_MAX_COUNT_CONTEXTS) {
+        goto fail;
     }
-    *tail_address = list_element;
+    size_t index = global_context->context_count;
+    global_context->contexts[index] = context;
 
-    pthread_mutex_unlock(&context_list_mutex);
+    pthread_mutex_unlock(&global_context->mutex);
 
     return context;
+
+fail:
+    free(context);
+    free(api);
+    return NULL;
 }
 
-void lwip_dpdk_context_release_all()
+static void lwip_dpdk_context_release(struct lwip_dpdk_context* context)
 {
-    pthread_mutex_lock(&context_list_mutex);
+    dlclose(context->api->handle);
+    free(context->api);
+    free(context);
+}
 
-    struct lwip_dpdk_context_list_element* current_element = context_list_head;
-    context_list_head = NULL;
+void lwip_dpdk_close(struct lwip_dpdk_global_context* global_context)
+{
+    pthread_mutex_lock(&global_context->mutex);
 
-    while(current_element != NULL) {
-        struct lwip_dpdk_context* context = current_element->value;
+    int i;
+    for(i = 0; i < global_context->context_count; ++i) {
+        struct lwip_dpdk_context* context = global_context->contexts[i];
 
-        dlclose(context->api->handle);
-        free(context->api);
-        free(context);
-
-        struct lwip_dpdk_context_list_element* prev_element = current_element;
-        current_element = prev_element->next;
-        free(prev_element);
+        lwip_dpdk_context_release(context);
     }
+    free(global_context->contexts);
 
-    pthread_mutex_unlock(&context_list_mutex);
+    //reset global_context
+    global_context->contexts = NULL;
+    global_context->context_count = 0;
+    pthread_mutex_unlock(&global_context->mutex);
+
+    free(global_context);
 }
