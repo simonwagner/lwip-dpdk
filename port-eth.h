@@ -40,6 +40,7 @@ extern "C" {
 #endif
 
 struct lwip_dpdk_queue_eth;
+struct lwip_dpdk_context;
 
 typedef int (*lwip_dpdk_port_op_rx_burst)
     (struct lwip_dpdk_queue_eth *queue, struct rte_mbuf **pkts, uint32_t n_pkts);
@@ -72,6 +73,7 @@ struct lwip_dpdk_queue_eth {
     uint8_t socket_id;
     struct lwip_dpdk_port_ops	     ops;
     struct rte_mempool	*mempool;
+    struct lwip_dpdk_context *context;
     struct lwip_dpdk_port_eth	*eth_port;
 };
 
@@ -79,7 +81,7 @@ struct lwip_dpdk_port_eth * lwip_dpdk_port_eth_create
     (struct lwip_dpdk_port_eth_params *conf);
 int lwip_dpdk_port_eth_start(struct lwip_dpdk_port_eth * port); /* only call this after you have setup the queues */
 struct lwip_dpdk_queue_eth* lwip_dpdk_queue_eth_create
-    (struct lwip_dpdk_port_eth *port, int socket_id, int queue_id);
+    (struct lwip_dpdk_context* context, struct lwip_dpdk_port_eth *port, int socket_id, int queue_id);
 int lwip_dpdk_port_eth_tx_burst
     (struct lwip_dpdk_queue_eth *lwip_dpdk_queue_eth, struct rte_mbuf **pkts, uint32_t n_pkts);
 

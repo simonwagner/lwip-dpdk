@@ -17,12 +17,7 @@
 #include <rte_mbuf.h>
 #include <rte_ring.h>
 
-#include <lwip/init.h>
-#include <lwip/tcp.h>
-#include <lwip/timeouts.h>
-#include <lwip/etharp.h>
-#include <netif/ethernet.h>
-
+#include "context.h"
 #include "ethif.h"
 #include "main.h"
 #include "main.hpp"
@@ -60,6 +55,8 @@ struct program_args {
 };
 
 static duration duration_bytes_sent;
+
+static struct lwip_dpdk_context* context;
 
 int
 dispatch_netio_thread(netif *netif, int pkt_burst_sz, string input_file);
@@ -225,7 +222,7 @@ create_eth_port(struct netif *netif, int socket_id, int port_id, ip_addr_t *ip_a
         rte_exit(EXIT_FAILURE, "Cannot alloc eth port\n");
     }
 
-    queue = ethif_queue_create(port, socket_id, 0);
+    queue = ethif_queue_create(context, port, socket_id, 0);
     if(queue == NULL) {
         rte_exit(EXIT_FAILURE, "Cannot alloc eth queue\n");
     }
@@ -234,16 +231,16 @@ create_eth_port(struct netif *netif, int socket_id, int port_id, ip_addr_t *ip_a
         rte_exit(EXIT_FAILURE, "Cannot start port\n");
     }
 
-    netif_add(netif,
+    context->api->_netif_add(netif,
           ip_addr,
           netmask,
           gw,
           queue,
           ethif_queue_added_cb,
-          ethernet_input);
+          context->api->_ethernet_input);
 
-    netif_set_link_up(netif);
-    netif_set_up(netif);
+    context->api->_netif_set_link_up(netif);
+    context->api->_netif_set_up(netif);
 
     return 0;
 }
@@ -258,11 +255,9 @@ int main(int argc, char** argv) {
     struct netif netif;
     struct program_args args;
 
-    int nr_ports; //TODO
-
     signal(SIGINT, interrupt_handler);
 
-    lwip_init();
+    lwip_dpdk_init();
 
     //parse command line arguments for app
     ret = parse_args(argc, argv, &args);
@@ -359,6 +354,11 @@ int main(int argc, char** argv) {
 
     uint8_t port_id = (uint8_t)found_eth_port_for_mac;
 
+    context = lwip_dpdk_context_create(0, NULL);
+    if(context == NULL) {
+        rte_exit(EXIT_FAILURE, "Failed to create context\n");
+    }
+
     lwip_dpdk_pktmbuf_pool_create_all(rte_socket_id());
 
     if(port_id >= nr_eth_dev) {
@@ -378,20 +378,20 @@ int main(int argc, char** argv) {
     etharp_add_static_entry(&arp_ipaddr, &arp_ethaddr);*/
 
     RTE_LOG(INFO, APP, "Created eth port with ID %d\n", ethif->eth_port->port_id);
-    RTE_LOG(INFO, APP, "\tIP: %s\n", ipaddr_ntoa(&netif.ip_addr));
-    RTE_LOG(INFO, APP, "\tNetmask: %s\n", ipaddr_ntoa(&netif.netmask));
+    RTE_LOG(INFO, APP, "\tIP: %s\n", context->api->ip4addr_ntoa(&netif.ip_addr));
+    RTE_LOG(INFO, APP, "\tNetmask: %s\n", context->api->ip4addr_ntoa(&netif.netmask));
 
     RTE_LOG(INFO, APP, "Binding port...\n");
-    connection = tcp_new();
+    connection = context->api->tcp_new();
     err_t tcp_ret;
-    tcp_ret = tcp_bind(connection, &netif.ip_addr, rand() % 1000 + 3000 /* bind to some random default port */);
+    tcp_ret = context->api->_tcp_bind(connection, &netif.ip_addr, rand() % 1000 + 3000 /* bind to some random default port */);
     if(tcp_ret != ERR_OK) {
         RTE_LOG(ERR, APP, "Failed to bind connection: %d\n", tcp_ret);
     }
     RTE_LOG(INFO, APP, "Setting up connecting...\n");
 
-    tcp_sent(connection, callback_sent); //set callback for acknowledgment
-    tcp_ret = tcp_connect(connection, &args.dest_ip, args.dest_port, [](void* arg, struct tcp_pcb*, err_t err) -> err_t {
+    context->api->tcp_sent(connection, callback_sent); //set callback for acknowledgment
+    tcp_ret = context->api->_tcp_connect(connection, &args.dest_ip, args.dest_port, [](void* arg, struct tcp_pcb*, err_t err) -> err_t {
         if(err == ERR_OK) {
             RTE_LOG(INFO, APP, "Established connection\n");
             connected = true;
@@ -402,12 +402,13 @@ int main(int argc, char** argv) {
 
         return ERR_OK;
     });
-    tcp_recv(connection, callback_ui_output);
+    context->api->tcp_recv(connection, callback_ui_output);
 
     RTE_LOG(INFO, APP, "Starting net io input loop...\n");
     dispatch_netio_thread(&netif, PKT_BURST_SZ, args.input_filepath);
     RTE_LOG(INFO, APP, "Net io input finished\n");
 
+    lwip_dpdk_context_release_all();
     rte_exit(EXIT_SUCCESS, "Finished\n");
 }
 
@@ -435,7 +436,7 @@ dispatch(struct netif *netif, struct rte_mbuf **pkts, uint32_t pkt_burst_sz)
      *
      * "Must be called periodically from your main loop."
      */
-    sys_check_timeouts();
+    context->api->sys_check_timeouts();
 
     n_pkts = lwip_dpdk_queue->ops.rx_burst(lwip_dpdk_queue, pkts, pkt_burst_sz);
     if (unlikely(n_pkts > pkt_burst_sz)) {
@@ -507,15 +508,15 @@ dispatch_ui_input(ui_input_state* state)
         if(bytes_read == send_count) {
             flags |= TCP_WRITE_FLAG_MORE;
         }
-        tcp_write(connection, state->buffer, (u16_t)bytes_read, flags);
-        tcp_output(connection);
+        context->api->tcp_write(connection, state->buffer, (u16_t)bytes_read, flags);
+        context->api->tcp_output(connection);
 
         return 0;
     }
     else {
         printf("closing connection\n");
         connected = false;
-        tcp_close(connection);
+        context->api->tcp_close(connection);
 
         return -2;
     }
@@ -551,7 +552,7 @@ err_t callback_ui_output(void * arg, struct tcp_pcb * tpcb,
 
     //acknowledge that we received the data
     if(p != NULL) {
-        tcp_recved(tpcb, p->len);
+        context->api->tcp_recved(tpcb, p->len);
     }
     else {
         //p is NULL when the connection has been finally closed

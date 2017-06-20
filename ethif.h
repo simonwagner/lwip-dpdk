@@ -39,12 +39,13 @@ extern "C" {
 
 #include "port-eth.h"
 
+struct lwip_dpdk_context;
 static inline struct lwip_dpdk_queue_eth* netif_dpdk_ethif(struct netif *netif)
 {
     return (struct lwip_dpdk_queue_eth*)netif->state;
 }
 
-struct lwip_dpdk_queue_eth * ethif_queue_create(struct lwip_dpdk_port_eth *port, int socket_id, int queue_id);
+struct lwip_dpdk_queue_eth * ethif_queue_create(struct lwip_dpdk_context* context, struct lwip_dpdk_port_eth *port, int socket_id, int queue_id);
 err_t ethif_queue_input(struct netif *netif, struct rte_mbuf *pkt);
 err_t ethif_queue_added_cb(struct netif *netif);
 

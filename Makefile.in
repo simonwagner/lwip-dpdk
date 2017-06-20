@@ -49,29 +49,7 @@ all: lwip-dpdk
 
 APP = lwip-dpdk
 SRCS-y := main.c tools.c mempool.c ethif.c \
-	port-eth.c \
-	lwip/src/api/err.c \
-	lwip/src/core/def.c \
-	lwip/src/core/init.c \
-	lwip/src/core/mem.c \
-	lwip/src/core/memp.c \
-	lwip/src/core/netif.c \
-	lwip/src/core/pbuf.c \
-	lwip/src/core/raw.c \
-	lwip/src/core/ipv4/icmp.c \
-	lwip/src/core/inet_chksum.c \
-	lwip/src/core/ip.c \
-	lwip/src/core/ipv4/ip4_addr.c \
-	lwip/src/core/ipv4/ip4_frag.c \
-	lwip/src/core/timeouts.c \
-	lwip/src/core/udp.c \
-	lwip/src/core/tcp.c \
-	lwip/src/core/tcp_out.c \
-	lwip/src/core/tcp_in.c \
-	lwip/src/core/ipv4/etharp.c \
-	lwip/src/netif/ethernet.c \
-	lwip/src/core/ipv4/ip4.c \
-	lwip-contrib/ports/unix/port/sys_arch.c
+	port-eth.c context.c
 
 EXTRA_CFLAGS += -Wall \
 	-I$(abs_srcdir) \

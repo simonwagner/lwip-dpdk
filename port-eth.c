@@ -85,7 +85,7 @@ int lwip_dpdk_port_eth_start(struct lwip_dpdk_port_eth * port)
 }
 
 struct lwip_dpdk_queue_eth*
-lwip_dpdk_queue_eth_create(struct lwip_dpdk_port_eth *port, int socket_id, int queue_id)
+lwip_dpdk_queue_eth_create(struct lwip_dpdk_context* context, struct lwip_dpdk_port_eth *port, int socket_id, int queue_id)
 {
     struct lwip_dpdk_queue_eth* queue;
     int ret;
@@ -94,6 +94,7 @@ lwip_dpdk_queue_eth_create(struct lwip_dpdk_port_eth *port, int socket_id, int q
 
     queue->port_id = port->port_id;
     queue->queue_id = queue_id;
+    queue->context = context;
     queue->mempool = lwip_dpdk_pktmbuf_pool_get(socket_id);
     queue->eth_port = port;
 

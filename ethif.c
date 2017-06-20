@@ -45,15 +45,16 @@
 #include <rte_malloc.h>
 #include <rte_memcpy.h>
 
+#include "context.h"
 #include "ethif.h"
 #include "mempool.h"
 #include "tools.h"
 
 
 struct lwip_dpdk_queue_eth *
-ethif_queue_create(struct lwip_dpdk_port_eth *port, int socket_id, int queue_id)
+ethif_queue_create(struct lwip_dpdk_context* context, struct lwip_dpdk_port_eth *port, int socket_id, int queue_id)
 {
-    return lwip_dpdk_queue_eth_create(port, socket_id, queue_id);
+    return lwip_dpdk_queue_eth_create(context, port, socket_id, queue_id);
 }
 
 /* buffer ownership and responsivity [if_input]
@@ -63,11 +64,12 @@ ethif_queue_create(struct lwip_dpdk_port_eth *port, int socket_id, int queue_id)
 err_t
 ethif_queue_input(struct netif *netif, struct rte_mbuf *m)
 {
+    struct lwip_dpdk_queue_eth *lwip_dpdk_ethif = (struct lwip_dpdk_queue_eth *)netif->state;
 	int len = rte_pktmbuf_pkt_len(m);
 	char *dat = rte_pktmbuf_mtod(m, char *);
 	struct pbuf *p, *q;
 
-	p = pbuf_alloc(PBUF_RAW, len, PBUF_POOL);
+    p = lwip_dpdk_ethif->context->api->_pbuf_alloc(PBUF_RAW, len, PBUF_POOL);
 	if (p == 0) {
 		rte_pktmbuf_free(m);
 		return ERR_OK;
@@ -119,7 +121,7 @@ ethif_queue_added_cb(struct netif *netif)
 
 	netif->name[0] = 'e';
 	netif->name[1] = 't';
-	netif->output = etharp_output;
+    netif->output = lwip_dpdk_ethif->context->api->_etharp_output;
 	netif->linkoutput = low_level_output;
 	netif->mtu = 1500;
 	netif->flags = NETIF_FLAG_BROADCAST | NETIF_FLAG_ETHARP;
