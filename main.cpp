@@ -26,10 +26,6 @@
 
 using namespace std;
 
-
-#define RTE_TEST_RX_DESC_DEFAULT 128
-#define RTE_TEST_TX_DESC_DEFAULT 512
-
 #define BUFFER_SIZE (4*1024)
 
 struct ui_input_state {
@@ -60,7 +56,7 @@ static struct lwip_dpdk_global_context* global_context;
 static struct lwip_dpdk_context* context;
 
 int
-dispatch_netio_thread(netif *netif, int pkt_burst_sz, string input_file);
+dispatch_netio_thread(lwip_dpdk_context *context, string input_file);
 int
 dispatch_ui_input(ui_input_state* state);
 void ui_thread();
@@ -204,48 +200,6 @@ int parse_args(int argc, char** argv, struct program_args*  args_out)
     return count;
 }
 
-static int
-create_eth_port(struct netif *netif, int socket_id, int port_id, ip_addr_t *ip_addr, ip_addr_t *netmask, ip_addr_t *gw)
-{
-    struct lwip_dpdk_port_eth *port = NULL;
-    struct lwip_dpdk_queue_eth *queue = NULL;
-    struct lwip_dpdk_port_eth_params params = {};
-
-    params.port_id = port_id;
-    params.nb_rx_desc = RTE_TEST_RX_DESC_DEFAULT;
-    params.nb_tx_desc = RTE_TEST_TX_DESC_DEFAULT;
-    params.eth_conf.link_speeds = ETH_LINK_SPEED_AUTONEG;
-
-    memset(netif, 0, sizeof(struct netif));
-
-    port = lwip_dpdk_port_eth_create(&params);
-    if(port == NULL) {
-        rte_exit(EXIT_FAILURE, "Cannot alloc eth port\n");
-    }
-
-    queue = ethif_queue_create(context, port, socket_id, 0);
-    if(queue == NULL) {
-        rte_exit(EXIT_FAILURE, "Cannot alloc eth queue\n");
-    }
-
-    if(lwip_dpdk_port_eth_start(port) != 0) {
-        rte_exit(EXIT_FAILURE, "Cannot start port\n");
-    }
-
-    context->api->_netif_add(netif,
-          ip_addr,
-          netmask,
-          gw,
-          queue,
-          ethif_queue_added_cb,
-          context->api->_ethernet_input);
-
-    context->api->_netif_set_link_up(netif);
-    context->api->_netif_set_up(netif);
-
-    return 0;
-}
-
 volatile static sig_atomic_t quit = 0;
 void interrupt_handler(int sig){
     quit = 1; // set flag
@@ -253,7 +207,6 @@ void interrupt_handler(int sig){
 
 int main(int argc, char** argv) {
     int ret;
-    struct netif netif;
     struct program_args args;
 
     signal(SIGINT, interrupt_handler);
@@ -354,20 +307,16 @@ int main(int argc, char** argv) {
     }
 
     uint8_t port_id = (uint8_t)found_eth_port_for_mac;
-
-    context = lwip_dpdk_context_create(global_context, 0, NULL);
-    if(context == NULL) {
-        rte_exit(EXIT_FAILURE, "Failed to create context\n");
-    }
-
-    lwip_dpdk_pktmbuf_pool_create_all(rte_socket_id());
-
     if(port_id >= nr_eth_dev) {
         rte_exit(EXIT_FAILURE, "Invalid ethernet device\n");
     }
 
-    create_eth_port(&netif, rte_socket_id(), port_id, &args.ip_addr, &args.netmask, NULL);
-    struct lwip_dpdk_queue_eth* ethif = netif_dpdk_ethif(&netif);
+    context = lwip_dpdk_context_create(global_context, 0);
+    if(context == NULL) {
+        rte_exit(EXIT_FAILURE, "Failed to create context\n");
+    }
+
+    struct lwip_dpdk_global_netif* global_netif = lwip_dpdk_global_netif_create(global_context, port_id, &args.ip_addr, &args.netmask, &lwip_dpdk_ip_addr_any);
 
     //static ARP entry for testing
     /*ip_addr_t arp_ipaddr;
@@ -378,14 +327,19 @@ int main(int argc, char** argv) {
 
     etharp_add_static_entry(&arp_ipaddr, &arp_ethaddr);*/
 
-    RTE_LOG(INFO, APP, "Created eth port with ID %d\n", ethif->eth_port->port_id);
-    RTE_LOG(INFO, APP, "\tIP: %s\n", context->api->ip4addr_ntoa(&netif.ip_addr));
-    RTE_LOG(INFO, APP, "\tNetmask: %s\n", context->api->ip4addr_ntoa(&netif.netmask));
+    RTE_LOG(INFO, APP, "Created eth port with ID %d\n", (int)lwip_dpdk_global_netif_get_port(global_netif));
+    RTE_LOG(INFO, APP, "\tIP: %s\n", context->api->ip4addr_ntoa(lwip_dpdk_global_netif_get_ipaddr(global_netif)));
+    RTE_LOG(INFO, APP, "\tNetmask: %s\n", context->api->ip4addr_ntoa(lwip_dpdk_global_netif_get_netmask(global_netif)));
+
+    RTE_LOG(INFO, APP, "Configuration is finished, starting lwip-dpdk machinery...\n");
+    if(lwip_dpdk_start(global_context) < 0) {
+        rte_exit(EXIT_FAILURE, "failed to start lwip-dpdk");
+    }
 
     RTE_LOG(INFO, APP, "Binding port...\n");
     connection = context->api->tcp_new();
     err_t tcp_ret;
-    tcp_ret = context->api->_tcp_bind(connection, &netif.ip_addr, rand() % 1000 + 3000 /* bind to some random default port */);
+    tcp_ret = context->api->_tcp_bind(connection, lwip_dpdk_global_netif_get_ipaddr(global_netif), rand() % 1000 + 3000 /* bind to some random default port */);
     if(tcp_ret != ERR_OK) {
         RTE_LOG(ERR, APP, "Failed to bind connection: %d\n", tcp_ret);
     }
@@ -406,56 +360,16 @@ int main(int argc, char** argv) {
     context->api->tcp_recv(connection, callback_ui_output);
 
     RTE_LOG(INFO, APP, "Starting net io input loop...\n");
-    dispatch_netio_thread(&netif, PKT_BURST_SZ, args.input_filepath);
+    dispatch_netio_thread(context, args.input_filepath);
     RTE_LOG(INFO, APP, "Net io input finished\n");
 
     lwip_dpdk_close(global_context);
     rte_exit(EXIT_SUCCESS, "Finished\n");
 }
 
-
-static int
-dispatch_to_ethif(struct netif *netif,
-          struct rte_mbuf **pkts, uint32_t n_pkts)
-{
-    uint32_t i;
-
-    for (i = 0; i < n_pkts; i++)
-        ethif_queue_input(netif, pkts[i]);
-
-    return n_pkts;
-}
-
-static int
-dispatch(struct netif *netif, struct rte_mbuf **pkts, uint32_t pkt_burst_sz)
-{
-    struct lwip_dpdk_queue_eth* lwip_dpdk_queue = netif_dpdk_ethif(netif);
-    uint32_t n_pkts;
-
-    /*
-     * From lwip/src/core/timers.c:
-     *
-     * "Must be called periodically from your main loop."
-     */
-    context->api->sys_check_timeouts();
-
-    n_pkts = lwip_dpdk_queue->ops.rx_burst(lwip_dpdk_queue, pkts, pkt_burst_sz);
-    if (unlikely(n_pkts > pkt_burst_sz)) {
-        printf("n_pkts > pkt_burst_sz\n");
-        return 0;
-    }
-
-    dispatch_to_ethif(netif, pkts, n_pkts);
-
-    return 0;
-}
-
 int
-dispatch_netio_thread(struct netif *netif, int pkt_burst_sz, string input_filepath)
+dispatch_netio_thread(struct lwip_dpdk_context* context, string input_filepath)
 {
-    struct rte_mbuf *pkts[pkt_burst_sz];
-    int ret_dispatch = 0;
-    int ret_io = 0;
     ui_input_state input_state = {};
 
     input_state.input_filepath = input_filepath;
@@ -463,13 +377,10 @@ dispatch_netio_thread(struct netif *netif, int pkt_burst_sz, string input_filepa
     duration_start(&duration_bytes_sent);
 
     while (!quit) {
-        ret_dispatch = dispatch(netif, pkts, pkt_burst_sz);
-        if(ret_dispatch < 0) {
-            break;
-        }
+        lwip_dpdk_context_dispatch_input(context);
 
         if(connected) {
-            ret_io = dispatch_ui_input(&input_state);
+            dispatch_ui_input(&input_state);
         }
     }
     return 0;

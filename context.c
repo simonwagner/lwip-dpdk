@@ -1,21 +1,25 @@
 #define _GNU_SOURCE
 
 #include <stdlib.h>
+#include <stdint.h>
 #include <dlfcn.h>
 #include <pthread.h>
 #include <errno.h>
+#include <assert.h>
 
-#include "context.h"
+#include "context_private.h"
+#include "mempool.h"
+#include "ethif_private.h"
+
+#define LWIP_DPDK_PKT_BURST_SZ 512
 
 #define LWIP_DPDK_LOAD_SYMBOL_BY_NAME(api, symbol, name) do { api->symbol = dlsym(api->handle, #name); if(api->symbol == NULL) { return -1; } } while(0)
 #define LWIP_DPDK_LOAD_SYMBOL(api, name) LWIP_DPDK_LOAD_SYMBOL_BY_NAME(api, name, name)
 #define LWIP_DPDK_LOAD_PRIVATE_SYMBOL(api, name) LWIP_DPDK_LOAD_SYMBOL_BY_NAME(api, _ ## name, name)
 
-struct lwip_dpdk_global_context {
-    pthread_mutex_t mutex;
-    struct lwip_dpdk_context** contexts;
-    int context_count;
-};
+struct netif;
+
+const ip_addr_t lwip_dpdk_ip_addr_any = IPADDR4_INIT(IPADDR_ANY);
 
 static int lwip_dpdk_init_api(struct lwip_dpdk_lwip_api* api, const char* lwip_library_path)
 {
@@ -31,6 +35,7 @@ static int lwip_dpdk_init_api(struct lwip_dpdk_lwip_api* api, const char* lwip_l
     LWIP_DPDK_LOAD_PRIVATE_SYMBOL(api, netif_add);
     LWIP_DPDK_LOAD_PRIVATE_SYMBOL(api, netif_set_up);
     LWIP_DPDK_LOAD_PRIVATE_SYMBOL(api, netif_set_link_up);
+    LWIP_DPDK_LOAD_PRIVATE_SYMBOL(api, netif_remove);
 
     //fp ethernet
     LWIP_DPDK_LOAD_PRIVATE_SYMBOL(api, ethernet_input);
@@ -67,16 +72,12 @@ struct lwip_dpdk_global_context* lwip_dpdk_init()
     pthread_mutex_init(&global_context->mutex, NULL);
 
     global_context->contexts = calloc(LWIP_DPDK_MAX_COUNT_CONTEXTS, sizeof(struct lwip_dpdk_context*));
+    global_context->global_netifs = calloc(LWIP_DPDK_MAX_COUNT_NETIFS, sizeof(struct lwip_dpdk_global_netif*));
 
     return global_context;
 }
 
-static int lwip_dpdk_context_clone_config_from(struct lwip_dpdk_context* context, struct lwip_dpdk_context* parent_context)
-{
-    return 0;
-}
-
-struct lwip_dpdk_context* lwip_dpdk_context_create(struct lwip_dpdk_global_context* global_context, uint8_t lcore, struct lwip_dpdk_context *parent_context)
+struct lwip_dpdk_context* lwip_dpdk_context_create(struct lwip_dpdk_global_context* global_context, uint8_t lcore)
 {
     struct lwip_dpdk_context* context = calloc(1, sizeof(struct lwip_dpdk_context));
     struct lwip_dpdk_lwip_api* api = calloc(1, sizeof(struct lwip_dpdk_lwip_api));
@@ -88,12 +89,6 @@ struct lwip_dpdk_context* lwip_dpdk_context_create(struct lwip_dpdk_global_conte
     context->api = api;
     context->lcore = lcore;
 
-    if(parent_context != NULL) {
-        if(lwip_dpdk_context_clone_config_from(context, parent_context) != 0) {
-            goto fail;
-        }
-    }
-
     context->api->_lwip_init();
 
     //insert context into context list
@@ -103,7 +98,9 @@ struct lwip_dpdk_context* lwip_dpdk_context_create(struct lwip_dpdk_global_conte
         goto fail;
     }
     size_t index = global_context->context_count;
+    ++global_context->context_count;
     global_context->contexts[index] = context;
+    context->index = index;
 
     pthread_mutex_unlock(&global_context->mutex);
 
@@ -122,11 +119,52 @@ static void lwip_dpdk_context_release(struct lwip_dpdk_context* context)
     free(context);
 }
 
+
+
+int lwip_dpdk_start(struct lwip_dpdk_global_context* global_context)
+{
+    int i;
+
+    //allocate memory buffer pools for all sockets
+    unsigned int max_socket = 0;
+    for(i = 0; i < global_context->context_count; ++i) {
+        struct lwip_dpdk_context* context = global_context->contexts[i];
+        unsigned int context_socket = rte_lcore_to_socket_id(context->lcore);
+        max_socket = max_socket < context_socket ? context_socket : max_socket;
+    }
+
+    lwip_dpdk_pktmbuf_pool_create_all(max_socket);
+
+    //allocate memory for network interfaces in contexts
+    for(i = 0; i < global_context->context_count; ++i) {
+        struct lwip_dpdk_context* context = global_context->contexts[i];
+        context->netifs_count = 0;
+        context->netifs = calloc(LWIP_DPDK_MAX_COUNT_NETIFS, sizeof(struct netif));
+    }
+
+    //setup network interfaces
+    for(i = 0; i < global_context->global_netifs_count; ++i) {
+        struct lwip_dpdk_global_netif* global_netif = global_context->global_netifs[i];
+
+        lwip_dpdk_global_netif_start(global_context, global_netif);
+    }
+
+    return 0;
+}
+
 void lwip_dpdk_close(struct lwip_dpdk_global_context* global_context)
 {
     pthread_mutex_lock(&global_context->mutex);
 
     int i;
+
+    for(i = 0; i < global_context->global_netifs_count; ++i) {
+        struct lwip_dpdk_global_netif* netif = global_context->global_netifs[i];
+
+        lwip_dpdk_global_netif_release(global_context, netif);
+    }
+    free(global_context->global_netifs);
+
     for(i = 0; i < global_context->context_count; ++i) {
         struct lwip_dpdk_context* context = global_context->contexts[i];
 
@@ -137,7 +175,36 @@ void lwip_dpdk_close(struct lwip_dpdk_global_context* global_context)
     //reset global_context
     global_context->contexts = NULL;
     global_context->context_count = 0;
+    global_context->global_netifs = NULL;
+    global_context->global_netifs_count = 0;
+
     pthread_mutex_unlock(&global_context->mutex);
 
     free(global_context);
+}
+
+int lwip_dpdk_context_dispatch_input(struct lwip_dpdk_context* context)
+{
+    int i, j;
+    struct rte_mbuf *pkts[LWIP_DPDK_PKT_BURST_SZ];
+
+    context->api->sys_check_timeouts(); //TODO: this should be moved to its own method
+
+    for(i = 0; i < context->netifs_count; ++i) {
+        struct netif* netif = &context->netifs[i];
+        uint32_t n_pkts;
+
+        do {
+            struct lwip_dpdk_queue_eth* lwip_dpdk_queue = netif_dpdk_ethif(netif);
+
+            n_pkts = lwip_dpdk_port_eth_rx_burst(lwip_dpdk_queue, pkts, LWIP_DPDK_PKT_BURST_SZ);
+
+            for (j = 0; j < n_pkts; j++) {
+                lwip_dpdk_ethif_queue_input(netif, pkts[i]);
+            }
+
+        } while(unlikely(n_pkts > LWIP_DPDK_PKT_BURST_SZ));
+    }
+
+    return 0;
 }

@@ -12,12 +12,14 @@
 extern "C" {
 #endif
 
+#define LWIP_DPDK_MAX_COUNT_NETIFS 9
 #define LWIP_DPDK_MAX_COUNT_CONTEXTS 16
 
 
 struct netif;
 struct tcp_pcb;
 
+extern const ip_addr_t lwip_dpdk_ip_addr_any;
 
 struct lwip_dpdk_lwip_api {
     void* handle;
@@ -36,6 +38,7 @@ struct lwip_dpdk_lwip_api {
                             void *state, netif_init_fn init, netif_input_fn input);
     void (*_netif_set_up)(struct netif *netif);
     void (*_netif_set_link_up)(struct netif *netif);
+    void (*_netif_remove)(struct netif *netif);
     //- fp ethernet
     err_t (*_ethernet_input)(struct pbuf *p, struct netif *inp);
     err_t (*_etharp_output)(struct netif *netif, struct pbuf *q, const ip4_addr_t *ipaddr);
@@ -67,14 +70,20 @@ struct lwip_dpdk_lwip_api {
 struct lwip_dpdk_context {
     unsigned lcore;
     struct lwip_dpdk_lwip_api* api;
+    struct netif* netifs;
+    unsigned int netifs_count;
+    unsigned int index;
 };
 
 struct lwip_dpdk_global_context;
+struct lwip_dpdk_global_netif;
 
 struct lwip_dpdk_global_context* lwip_dpdk_init();
+int lwip_dpdk_start(struct lwip_dpdk_global_context* global_context);
 void lwip_dpdk_close(struct lwip_dpdk_global_context* global_context);
 
-struct lwip_dpdk_context* lwip_dpdk_context_create(struct lwip_dpdk_global_context* global_context, uint8_t lcore, struct lwip_dpdk_context* parent_context);
+struct lwip_dpdk_context* lwip_dpdk_context_create(struct lwip_dpdk_global_context* global_context, uint8_t lcore);
+int lwip_dpdk_context_dispatch_input(struct lwip_dpdk_context* context);
 
 #ifdef __cplusplus
 }

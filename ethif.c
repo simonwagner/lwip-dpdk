@@ -34,6 +34,8 @@
 #include <config.h>
 #endif
 
+#include <assert.h>
+
 #include <lwip/opt.h>
 #include <lwip/debug.h>
 #include <lwip/mem.h>
@@ -46,23 +48,137 @@
 #include <rte_memcpy.h>
 
 #include "context.h"
-#include "ethif.h"
+#include "context_private.h"
+#include "ethif_private.h"
 #include "mempool.h"
 #include "tools.h"
 
+#define RTE_TEST_RX_DESC_DEFAULT 128
+#define RTE_TEST_TX_DESC_DEFAULT 512
 
-struct lwip_dpdk_queue_eth *
-ethif_queue_create(struct lwip_dpdk_context* context, struct lwip_dpdk_port_eth *port, int socket_id, int queue_id)
+static void lwip_dpdk_netif_add(struct lwip_dpdk_context* context, struct netif* netif, struct lwip_dpdk_port_eth *port, const ip4_addr_t *ipaddr, const ip4_addr_t *netmask, const ip4_addr_t *gw);
+static err_t ethif_queue_added_cb(struct netif *netif);
+
+const ip_addr_t* lwip_dpdk_global_netif_get_ipaddr(struct lwip_dpdk_global_netif* global_netif)
 {
-    return lwip_dpdk_queue_eth_create(context, port, socket_id, queue_id);
+    return &global_netif->ipaddr;
+}
+
+const ip_addr_t* lwip_dpdk_global_netif_get_netmask(struct lwip_dpdk_global_netif* global_netif)
+{
+    return &global_netif->netmask;
+}
+
+const ip_addr_t* lwip_dpdk_global_netif_get_gw(struct lwip_dpdk_global_netif* global_netif)
+{
+    return &global_netif->gw;
+}
+
+uint8_t lwip_dpdk_global_netif_get_port(struct lwip_dpdk_global_netif* global_netif)
+{
+    return global_netif->port_id;
+}
+
+struct lwip_dpdk_global_netif* lwip_dpdk_global_netif_create(struct lwip_dpdk_global_context* global_context, uint8_t port_id, const ip_addr_t* ipaddr, const ip_addr_t* netmask, const ip_addr_t* gw)
+{
+    assert(global_context->global_netifs_count < LWIP_DPDK_MAX_COUNT_NETIFS);
+
+    struct lwip_dpdk_global_netif* netif = calloc(1, sizeof(struct lwip_dpdk_global_netif));
+
+    netif->port_id = port_id;
+    ip_addr_copy(netif->ipaddr, *ipaddr);
+    ip_addr_copy(netif->netmask, *netmask);
+    ip_addr_copy(netif->gw, *gw);
+
+    netif->num = global_context->global_netifs_count;
+    global_context->global_netifs[netif->num] = netif;
+    global_context->global_netifs_count += 1;
+
+    return netif;
+}
+
+void lwip_dpdk_global_netif_start(struct lwip_dpdk_global_context* global_context, struct lwip_dpdk_global_netif* global_netif)
+{
+    global_netif->context_netifs = calloc(global_context->context_count, sizeof(struct netif*));
+
+    //create the port for the global network interface
+    struct lwip_dpdk_port_eth *port = NULL;
+    struct lwip_dpdk_port_eth_params params = {};
+
+    params.port_id = global_netif->port_id;
+    params.nb_queues = global_context->context_count;
+    params.nb_rx_desc = RTE_TEST_RX_DESC_DEFAULT;
+    params.nb_tx_desc = RTE_TEST_TX_DESC_DEFAULT;
+    params.eth_conf.link_speeds = ETH_LINK_SPEED_AUTONEG;
+
+    port = lwip_dpdk_port_eth_create(&params);
+    if(port == NULL) {
+        rte_exit(EXIT_FAILURE, "Cannot alloc eth port\n");
+    }
+
+    global_netif->port = port;
+
+    //create a network interface in each context
+    int i;
+    for(i = 0; i < global_context->context_count; ++i) {
+        struct lwip_dpdk_context* context = global_context->contexts[i];
+        unsigned int netif_index = context->netifs_count;
+
+        assert(netif_index < LWIP_DPDK_MAX_COUNT_NETIFS);
+
+        struct netif* netif = &context->netifs[netif_index];
+        ++context->netifs_count;
+
+        global_netif->context_netifs[i] = netif;
+
+        lwip_dpdk_netif_add(context, netif, global_netif->port, &global_netif->ipaddr, &global_netif->netmask, &global_netif->gw);
+    }
+
+    if(lwip_dpdk_port_eth_start(port) != 0) {
+        rte_exit(EXIT_FAILURE, "Cannot start port\n");
+    }
+}
+
+void lwip_dpdk_global_netif_release(struct lwip_dpdk_global_context* global_context, struct lwip_dpdk_global_netif* global_netif)
+{
+    int i;
+    for(i = 0; i < global_context->context_count; ++i) {
+        struct lwip_dpdk_context* context = global_context->contexts[i];
+
+        context->api->_netif_remove(global_netif->context_netifs[i]);
+        free(global_netif->context_netifs[i]);
+        global_netif->context_netifs[i] = NULL;
+    }
+}
+
+static void lwip_dpdk_netif_add(struct lwip_dpdk_context* context, struct netif* netif, struct lwip_dpdk_port_eth *port, const ip4_addr_t *ipaddr, const ip4_addr_t *netmask, const ip4_addr_t *gw)
+{
+    struct lwip_dpdk_queue_eth *queue = NULL;
+
+    memset(netif, 0, sizeof(struct netif));
+
+    queue = lwip_dpdk_queue_eth_create(context, port, rte_lcore_to_socket_id(context->lcore), context->index);
+    if(queue == NULL) {
+        rte_exit(EXIT_FAILURE, "Cannot alloc eth queue\n");
+    }
+
+    context->api->_netif_add(netif,
+          ipaddr,
+          netmask,
+          gw,
+          queue,
+          ethif_queue_added_cb,
+          context->api->_ethernet_input);
+
+    context->api->_netif_set_link_up(netif);
+    context->api->_netif_set_up(netif);
 }
 
 /* buffer ownership and responsivity [if_input]
  *   pbuf: transfer the ownership of a newly allocated pbuf to lwip
  *   mbuf: free all here
  */
-err_t
-ethif_queue_input(struct netif *netif, struct rte_mbuf *m)
+err_t lwip_dpdk_ethif_queue_input(struct netif *netif, struct rte_mbuf *m)
 {
     struct lwip_dpdk_queue_eth *lwip_dpdk_ethif = (struct lwip_dpdk_queue_eth *)netif->state;
 	int len = rte_pktmbuf_pkt_len(m);
@@ -89,8 +205,7 @@ ethif_queue_input(struct netif *netif, struct rte_mbuf *m)
  *   mbuf: transfer the ownership of a newly allocated mbuf to
  *         the underlying port
  */
-static err_t
-low_level_output(struct netif *netif, struct pbuf *p)
+static err_t low_level_output(struct netif *netif, struct pbuf *p)
 {
     struct lwip_dpdk_queue_eth *lwip_dpdk_ethif = (struct lwip_dpdk_queue_eth *)netif->state;
 	struct rte_mbuf *m;
@@ -114,8 +229,7 @@ low_level_output(struct netif *netif, struct pbuf *p)
 	return ERR_OK;
 }
 
-err_t
-ethif_queue_added_cb(struct netif *netif)
+static err_t ethif_queue_added_cb(struct netif *netif)
 {
     struct lwip_dpdk_queue_eth *lwip_dpdk_ethif = (struct lwip_dpdk_queue_eth *)netif->state;
 

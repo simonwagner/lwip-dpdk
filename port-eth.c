@@ -40,8 +40,6 @@
 #include "port-eth.h"
 #include "mempool.h"
 
-static struct lwip_dpdk_port_ops lwip_dpdk_port_eth_ops;
-
 struct lwip_dpdk_port_eth *
 lwip_dpdk_port_eth_create(struct lwip_dpdk_port_eth_params *conf)
 {
@@ -58,7 +56,7 @@ lwip_dpdk_port_eth_create(struct lwip_dpdk_port_eth_params *conf)
 	port->port_id = port_id;
     port->conf = *conf;
 
-	ret = rte_eth_dev_configure(port_id, 1, 1, &conf->eth_conf);
+    ret = rte_eth_dev_configure(port_id, conf->nb_queues, conf->nb_queues, &conf->eth_conf);
 	if (ret < 0) {
 		RTE_LOG(ERR, PORT, "Cannot config eth dev: %s\n",
 			rte_strerror(-ret));
@@ -116,8 +114,6 @@ lwip_dpdk_queue_eth_create(struct lwip_dpdk_context* context, struct lwip_dpdk_p
         return NULL;
     }
 
-    queue->ops = lwip_dpdk_port_eth_ops;
-
     return queue;
 }
 
@@ -155,8 +151,3 @@ lwip_dpdk_port_eth_tx_burst(struct lwip_dpdk_queue_eth *lwip_dpdk_queue_eth,
         }
 	return tx;
 }
-
-static struct lwip_dpdk_port_ops lwip_dpdk_port_eth_ops = {
-    .rx_burst = lwip_dpdk_port_eth_rx_burst,
-    .tx_burst = lwip_dpdk_port_eth_tx_burst
-};
