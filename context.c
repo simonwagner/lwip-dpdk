@@ -10,6 +10,7 @@
 #include "context_private.h"
 #include "mempool.h"
 #include "ethif_private.h"
+#include "rss.h"
 
 #define LWIP_DPDK_PKT_BURST_SZ 512
 
@@ -30,6 +31,7 @@ static int lwip_dpdk_init_api(struct lwip_dpdk_lwip_api* api, const char* lwip_l
 
     //fp generic
     LWIP_DPDK_LOAD_PRIVATE_SYMBOL(api, lwip_init);
+    LWIP_DPDK_LOAD_PRIVATE_SYMBOL(api, tcp_set_new_port_fn);
 
     //fp netif
     LWIP_DPDK_LOAD_PRIVATE_SYMBOL(api, netif_add);
@@ -73,6 +75,8 @@ struct lwip_dpdk_global_context* lwip_dpdk_init()
 
     global_context->contexts = calloc(LWIP_DPDK_MAX_COUNT_CONTEXTS, sizeof(struct lwip_dpdk_context*));
     global_context->global_netifs = calloc(LWIP_DPDK_MAX_COUNT_NETIFS, sizeof(struct lwip_dpdk_global_netif*));
+
+    lwip_dpdk_rss_init();
 
     return global_context;
 }
@@ -148,6 +152,14 @@ int lwip_dpdk_start(struct lwip_dpdk_global_context* global_context)
 
         lwip_dpdk_global_netif_start(global_context, global_netif);
     }
+    //set the function for selecting the correct source port
+    //so that RSS works
+    for(i = 0; i < global_context->context_count; ++i) {
+        struct lwip_dpdk_context* context = global_context->contexts[i];
+        context->api->_tcp_set_new_port_fn(lwip_dpdk_queue_eth_select_ip_port,
+                                           lwip_dpdk_queue_eth_select_ip_port_context_create(global_context, context));
+    }
+
 
     return 0;
 }

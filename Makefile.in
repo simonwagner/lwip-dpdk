@@ -49,7 +49,7 @@ all: lwip-dpdk
 
 APP = lwip-dpdk
 SRCS-y := main.c tools.c mempool.c ethif.c \
-	port-eth.c context.c
+	port-eth.c context.c rss.c
 
 EXTRA_CFLAGS += -Wall \
 	-I$(abs_srcdir) \

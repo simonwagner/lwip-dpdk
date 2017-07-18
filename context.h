@@ -29,6 +29,7 @@ struct lwip_dpdk_lwip_api {
     //function pointers
     //- fp generic
     void (*_lwip_init)(void);
+    void (*_tcp_set_new_port_fn)(tcp_new_port_fn fn, void* context);
 
     //- fp netif
     struct netif *(*_netif_add)(struct netif *netif,

@@ -41,6 +41,7 @@ extern "C" {
 
 struct lwip_dpdk_queue_eth;
 struct lwip_dpdk_context;
+struct lwip_dpdk_global_context;
 
 struct lwip_dpdk_port_eth_params {
 	uint8_t			 port_id;
@@ -77,6 +78,10 @@ int lwip_dpdk_port_eth_tx_burst
 int
 lwip_dpdk_port_eth_rx_burst(struct lwip_dpdk_queue_eth *lwip_dpdk_port_eth,
               struct rte_mbuf **pkts, uint32_t n_pkts);
+uint16_t
+lwip_dpdk_queue_eth_select_ip_port(struct tcp_pcb ** const* tcp_pcb_lists, uint32_t tcp_pcb_lists_count, const ip_addr_t* src, const ip_addr_t* dst, u16_t dport, void* context);
+void*
+lwip_dpdk_queue_eth_select_ip_port_context_create(struct lwip_dpdk_global_context *global_context, struct lwip_dpdk_context *context);
 
 #ifdef __cplusplus
 }

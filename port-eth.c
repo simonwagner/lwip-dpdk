@@ -37,8 +37,16 @@
 #include <rte_errno.h>
 #include <rte_malloc.h>
 
+#include <lwip/ip_addr.h>
+#include <lwip/tcp.h>
+
 #include "port-eth.h"
 #include "mempool.h"
+#include "rss.h"
+#include "context_private.h"
+
+#define TCP_LOCAL_PORT_RANGE_START        0xc000
+#define TCP_LOCAL_PORT_RANGE_END          0xffff
 
 struct lwip_dpdk_port_eth *
 lwip_dpdk_port_eth_create(struct lwip_dpdk_port_eth_params *conf)
@@ -80,6 +88,63 @@ int lwip_dpdk_port_eth_start(struct lwip_dpdk_port_eth * port)
     }
 
     return ret;
+}
+
+struct lwip_dpdk_queue_eth_select_ip_port_context {
+    uint32_t count_queues;
+    uint32_t queue_index;
+};
+
+void*
+lwip_dpdk_queue_eth_select_ip_port_context_create(struct lwip_dpdk_global_context *global_context, struct lwip_dpdk_context *context)
+{
+    struct lwip_dpdk_queue_eth_select_ip_port_context* select_ip_port_context = rte_zmalloc_socket("lwip_dpdk_queue_eth_select_ip_port_context",
+                                                                                                   sizeof(struct lwip_dpdk_queue_eth_select_ip_port_context),
+                                                                                                   0,
+                                                                                                   rte_lcore_to_socket_id(context->lcore));
+    select_ip_port_context->count_queues = global_context->context_count;
+    select_ip_port_context->queue_index = context->index;
+
+    return select_ip_port_context;
+    //TODO: free the allocated context
+}
+
+uint16_t
+lwip_dpdk_queue_eth_select_ip_port(struct tcp_pcb ** const* tcp_pcb_lists, uint32_t tcp_pcb_lists_count, const ip_addr_t* src, const ip_addr_t* dst, u16_t dport, void* context)
+{
+    uint8_t i;
+    uint16_t n = 0;
+    struct tcp_pcb *pcb;
+    uint16_t tcp_port = TCP_LOCAL_PORT_RANGE_START;
+
+    uint32_t cached_value = lwip_dpdk_rss_cached_value_for_rss(src->addr, dst->addr);
+
+    struct lwip_dpdk_queue_eth_select_ip_port_context* select_ip_port_context = (struct lwip_dpdk_queue_eth_select_ip_port_context*)context;
+    uint32_t required_queue = select_ip_port_context->queue_index;
+    uint32_t count_queues = select_ip_port_context->count_queues;
+
+  again:
+    if (tcp_port++ == TCP_LOCAL_PORT_RANGE_END) {
+      tcp_port = TCP_LOCAL_PORT_RANGE_START;
+    }
+    /* Check all PCB lists. */
+    for (i = 0; i < tcp_pcb_lists_count; i++) {
+      for (pcb = *tcp_pcb_lists[i]; pcb != NULL; pcb = pcb->next) {
+        if (pcb->local_port == tcp_port) {
+          if (++n > (TCP_LOCAL_PORT_RANGE_END - TCP_LOCAL_PORT_RANGE_START)) {
+            return 0;
+          }
+          goto again;
+        }
+      }
+    }
+    /* Check wether packet to this port would land on the correct queue */
+    uint32_t hash_value = lwip_dpdk_rss_for_ports(cached_value, tcp_port, dport);
+    if(lwip_dpdk_rss_queue_for_hash(hash_value, count_queues) != required_queue) {
+        goto again;
+    }
+
+    return tcp_port;
 }
 
 struct lwip_dpdk_queue_eth*
