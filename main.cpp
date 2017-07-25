@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <unistd.h>
 #include <atomic>
+#include <algorithm>
 
 #include <getopt.h>
 #include <netdb.h>
@@ -29,15 +30,17 @@ using namespace std;
 #define BUFFER_SIZE (4*1024)
 
 struct ui_input_state {
-    string input_filepath;
-    FILE* f;
-    off_t offset;
+    string input_filepath = "";
+    FILE* f = NULL;
+    off_t offset = 0;
     char buffer[BUFFER_SIZE];
+    struct tcp_pcb* connection = NULL;
+    bool connected = false;
 };
 
-atomic<bool> connected;
-
-struct tcp_pcb* connection;
+struct tcp_pcb** connections;
+ui_input_state* input_states;
+int number_of_connections = 0;
 
 struct program_args {
     uint8_t		      port_id;
@@ -48,6 +51,7 @@ struct program_args {
     string            input_filepath;
     ip_addr_t         dest_ip;
     uint16_t          dest_port;
+    int               number_of_connections;
 };
 
 static duration duration_bytes_sent;
@@ -110,8 +114,9 @@ int parse_args(int argc, char** argv, struct program_args*  args_out)
     char missing_required_flags[] = "PHampf";
 
     args_out->list_ether_addresses = false;
+    args_out->number_of_connections = 1;
 
-    while ((c = getopt (argc, argv, "P:H:a:m:p:f:L")) != -1) {
+    while ((c = getopt (argc, argv, "P:H:a:m:p:f:L:n:")) != -1) {
         switch (c)
         {
         case 'P':
@@ -173,6 +178,10 @@ int parse_args(int argc, char** argv, struct program_args*  args_out)
         case 'L':
             args_out->list_ether_addresses = true;
             count += 1;
+            break;
+        case 'n':
+            args_out->number_of_connections = atoi(optarg);
+            count += 2;
             break;
         case '?':
             if (optopt == 'c')
@@ -336,28 +345,37 @@ int main(int argc, char** argv) {
         rte_exit(EXIT_FAILURE, "failed to start lwip-dpdk");
     }
 
-    RTE_LOG(INFO, APP, "Binding port...\n");
-    connection = context->api->tcp_new();
-    err_t tcp_ret;
-    tcp_ret = context->api->_tcp_bind(connection, lwip_dpdk_global_netif_get_ipaddr(global_netif), rand() % 1000 + 3000 /* bind to some random default port */);
-    if(tcp_ret != ERR_OK) {
-        RTE_LOG(ERR, APP, "Failed to bind connection: %d\n", tcp_ret);
+    number_of_connections = args.number_of_connections;
+    input_states = new ui_input_state[number_of_connections];
+    connections = (struct tcp_pcb**)calloc(number_of_connections, sizeof(struct tcp_pcb*));
+
+    for(int i = 0; i < number_of_connections; i++) {
+        RTE_LOG(INFO, APP, "Creating connection %d of %d...\n", i + 1, number_of_connections);
+        struct tcp_pcb* connection = context->api->tcp_new();
+        context->api->tcp_arg(connection, &input_states[i]);
+
+        err_t tcp_ret;
+        RTE_LOG(INFO, APP, "Setting up connecting...\n");
+
+        context->api->tcp_sent(connection, callback_sent); //set callback for acknowledgment
+        tcp_ret = context->api->_tcp_connect(connection, &args.dest_ip, args.dest_port, [](void* arg, struct tcp_pcb* pcb, err_t err) -> err_t {
+            struct ui_input_state* input_state = (struct ui_input_state*)arg;
+            if(err == ERR_OK) {
+                input_state->connected = true;
+                RTE_LOG(INFO, APP, "Established connection to %s, src port %d\n", context->api->ip4addr_ntoa(&pcb->remote_ip), context->api->lwip_ntohs(pcb->remote_port));
+            }
+            else {
+                RTE_LOG(ERR, APP, "Connecting failed (%d)\n", err);
+            }
+
+            return ERR_OK;
+        });
+        if(tcp_ret != ERR_OK) {
+            rte_exit(EXIT_FAILURE, "failed to connect");
+        }
+        context->api->tcp_recv(connection, callback_ui_output);
+        connections[i] = connection;
     }
-    RTE_LOG(INFO, APP, "Setting up connecting...\n");
-
-    context->api->tcp_sent(connection, callback_sent); //set callback for acknowledgment
-    tcp_ret = context->api->_tcp_connect(connection, &args.dest_ip, args.dest_port, [](void* arg, struct tcp_pcb*, err_t err) -> err_t {
-        if(err == ERR_OK) {
-            RTE_LOG(INFO, APP, "Established connection\n");
-            connected = true;
-        }
-        else {
-            RTE_LOG(ERR, APP, "Connecting failed (%d)\n", err);
-        }
-
-        return ERR_OK;
-    });
-    context->api->tcp_recv(connection, callback_ui_output);
 
     RTE_LOG(INFO, APP, "Starting net io input loop...\n");
     dispatch_netio_thread(context, args.input_filepath);
@@ -370,17 +388,20 @@ int main(int argc, char** argv) {
 int
 dispatch_netio_thread(struct lwip_dpdk_context* context, string input_filepath)
 {
-    ui_input_state input_state = {};
-
-    input_state.input_filepath = input_filepath;
+    for(int i = 0; i < number_of_connections; i++) {
+        input_states[i].input_filepath = input_filepath;
+        input_states[i].connection = connections[i];
+    }
 
     duration_start(&duration_bytes_sent);
 
     while (!quit) {
         lwip_dpdk_context_dispatch_input(context);
 
-        if(connected) {
-            dispatch_ui_input(&input_state);
+        for(int i = 0; i < number_of_connections; i++) {
+            if(input_states[i].connected) {
+                dispatch_ui_input(&input_states[i]);
+            }
         }
     }
     return 0;
@@ -404,7 +425,8 @@ dispatch_ui_input(ui_input_state* state)
     }
 
     if(!feof(state->f)) {
-        u16_t available = tcp_sndbuf(connection);
+        u16_t available = tcp_sndbuf(state->connection);
+
         if(available == 0) {
             return 0; //back off and try again later
         }
@@ -420,15 +442,16 @@ dispatch_ui_input(ui_input_state* state)
         if(bytes_read == send_count) {
             flags |= TCP_WRITE_FLAG_MORE;
         }
-        context->api->tcp_write(connection, state->buffer, (u16_t)bytes_read, flags);
-        context->api->tcp_output(connection);
+
+        context->api->tcp_write(state->connection, state->buffer, (u16_t)bytes_read, flags);
+        context->api->tcp_output(state->connection);
 
         return 0;
     }
     else {
         printf("closing connection\n");
-        connected = false;
-        context->api->tcp_close(connection);
+        state->connected = false;
+        context->api->tcp_close(state->connection);
 
         return -2;
     }
