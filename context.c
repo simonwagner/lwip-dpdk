@@ -63,6 +63,8 @@ static int lwip_dpdk_init_api(struct lwip_dpdk_lwip_api* api, const char* lwip_l
 
     //fp utility
     LWIP_DPDK_LOAD_SYMBOL(api, ip4addr_ntoa);
+    LWIP_DPDK_LOAD_SYMBOL(api, lwip_htons);
+    LWIP_DPDK_LOAD_SYMBOL_BY_NAME(api, lwip_ntohs, lwip_htons);
 
     return 0;
 }

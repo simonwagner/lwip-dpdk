@@ -64,6 +64,8 @@ struct lwip_dpdk_lwip_api {
     struct pbuf * (*_pbuf_alloc)(pbuf_layer layer, u16_t length, pbuf_type type);
     //- fp utility
     char *(*ip4addr_ntoa)(const ip4_addr_t *addr);
+    u16_t (*lwip_ntohs)(u16_t s);
+    u16_t (*lwip_htons)(u16_t s);
 
 
 };
