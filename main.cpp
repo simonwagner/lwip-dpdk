@@ -441,7 +441,7 @@ err_t callback_sent(void * arg, struct tcp_pcb * tpcb,
 
     sum_bytes_sent += len;
 
-    if(sum_bytes_sent % (10ULL*1024ULL*1024ULL) == 0 && sum_bytes_sent > 0) {
+    if(sum_bytes_sent > 10ULL*1024ULL*1024ULL) {
         duration_stop(&duration_bytes_sent);
 
         printf("\033[A\033[2KSpeed: %f MBits/s\n", sum_bytes_sent*8.0 / duration_as_sec(&duration_bytes_sent) / (1e6));
