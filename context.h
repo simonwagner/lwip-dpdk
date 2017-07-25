@@ -55,6 +55,7 @@ struct lwip_dpdk_lwip_api {
     void             (*tcp_recved)(struct tcp_pcb *pcb, u16_t len);
     err_t            (*tcp_close)(struct tcp_pcb *pcb);
     void             (*tcp_sent)(struct tcp_pcb *pcb, tcp_sent_fn sent);
+    void             (*tcp_arg)(struct tcp_pcb * pcb, void * arg);
 
     //- fp tcp callback
     void             (*tcp_recv)    (struct tcp_pcb *pcb, tcp_recv_fn recv);

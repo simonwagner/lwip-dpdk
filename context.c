@@ -51,6 +51,8 @@ static int lwip_dpdk_init_api(struct lwip_dpdk_lwip_api* api, const char* lwip_l
     LWIP_DPDK_LOAD_SYMBOL(api, tcp_output);
     LWIP_DPDK_LOAD_SYMBOL(api, tcp_recved);
     LWIP_DPDK_LOAD_SYMBOL(api, tcp_close);
+    LWIP_DPDK_LOAD_SYMBOL(api, tcp_arg);
+
     //fp tcp callback
     LWIP_DPDK_LOAD_SYMBOL(api, tcp_recv);
     LWIP_DPDK_LOAD_SYMBOL(api, tcp_sent);
