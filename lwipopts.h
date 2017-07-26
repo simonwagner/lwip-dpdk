@@ -92,7 +92,7 @@
  * MEM_SIZE: the size of the heap memory. If the application will send
  * a lot of data that needs to be copied, this should be set high.
  */
-#define MEM_SIZE                        16000
+#define MEM_SIZE                        (0xFFFFFFFFUL)
 
 
 /*
@@ -111,26 +111,26 @@
  * MEMP_NUM_RAW_PCB: Number of raw connection PCBs
  * (requires the LWIP_RAW option)
  */
-#define MEMP_NUM_RAW_PCB                4
+#define MEMP_NUM_RAW_PCB                65535
 
 /**
  * MEMP_NUM_UDP_PCB: the number of UDP protocol control blocks. One
  * per active UDP "connection".
  * (requires the LWIP_UDP option)
  */
-#define MEMP_NUM_UDP_PCB                4
+#define MEMP_NUM_UDP_PCB                65535
 
 /**
  * MEMP_NUM_TCP_PCB: the number of simulatenously active TCP connections.
  * (requires the LWIP_TCP option)
  */
-#define MEMP_NUM_TCP_PCB                2
+#define MEMP_NUM_TCP_PCB                65535
 
 /**
  * MEMP_NUM_TCP_PCB_LISTEN: the number of listening TCP connections.
  * (requires the LWIP_TCP option)
  */
-#define MEMP_NUM_TCP_PCB_LISTEN         8
+#define MEMP_NUM_TCP_PCB_LISTEN         65535
 
 /**
  * MEMP_NUM_ARP_QUEUE: the number of simulateously queued outgoing
@@ -138,12 +138,12 @@
  * their destination address) to finish.
  * (requires the ARP_QUEUEING option)
  */
-#define MEMP_NUM_ARP_QUEUE              2
+#define MEMP_NUM_ARP_QUEUE              64
 
 /**
  * MEMP_NUM_SYS_TIMEOUT: the number of simulateously active timeouts.
  */
-#define MEMP_NUM_SYS_TIMEOUT            3
+#define MEMP_NUM_SYS_TIMEOUT            64
 
 /**
  * MEMP_NUM_NETBUF: the number of struct netbufs.
