@@ -36,11 +36,9 @@ struct ui_input_state {
     char buffer[BUFFER_SIZE];
     struct tcp_pcb* connection = NULL;
     bool connected = false;
-};
+    struct lwip_dpdk_context* context = NULL;
 
-struct tcp_pcb** connections;
-ui_input_state* input_states;
-int number_of_connections = 0;
+};
 
 struct program_args {
     uint8_t		      port_id;
@@ -52,15 +50,20 @@ struct program_args {
     ip_addr_t         dest_ip;
     uint16_t          dest_port;
     int               number_of_connections;
+    int               number_of_cores;
+};
+
+struct main_core_args {
+    struct program_args* args;
+    struct lwip_dpdk_context* context;
 };
 
 static duration duration_bytes_sent;
 
 static struct lwip_dpdk_global_context* global_context;
-static struct lwip_dpdk_context* context;
 
 int
-dispatch_netio_thread(lwip_dpdk_context *context, string input_file);
+dispatch_netio_thread(struct ui_input_state *input_states, struct lwip_dpdk_context *context, int number_of_connections);
 int
 dispatch_ui_input(ui_input_state* state);
 void ui_thread();
@@ -68,6 +71,7 @@ err_t callback_ui_output(void * arg, struct tcp_pcb * tpcb,
                        struct pbuf * p, err_t err);
 err_t callback_sent(void * arg, struct tcp_pcb * tpcb,
                    u16_t len);
+int main_core(void* arg);
 
 bool parse_addr(const char* addr, ip_addr_t* ipaddr)
 {
@@ -115,8 +119,9 @@ int parse_args(int argc, char** argv, struct program_args*  args_out)
 
     args_out->list_ether_addresses = false;
     args_out->number_of_connections = 1;
+    args_out->number_of_cores = 1;
 
-    while ((c = getopt (argc, argv, "P:H:a:m:p:f:L:n:")) != -1) {
+    while ((c = getopt (argc, argv, "P:H:a:m:p:f:L:n:c:")) != -1) {
         switch (c)
         {
         case 'P':
@@ -181,6 +186,10 @@ int parse_args(int argc, char** argv, struct program_args*  args_out)
             break;
         case 'n':
             args_out->number_of_connections = atoi(optarg);
+            count += 2;
+            break;
+        case 'c':
+            args_out->number_of_cores = atoi(optarg);
             count += 2;
             break;
         case '?':
@@ -320,10 +329,15 @@ int main(int argc, char** argv) {
         rte_exit(EXIT_FAILURE, "Invalid ethernet device\n");
     }
 
-    context = lwip_dpdk_context_create(global_context, 0);
-    if(context == NULL) {
-        rte_exit(EXIT_FAILURE, "Failed to create context\n");
+    struct lwip_dpdk_context* contexts[args.number_of_cores];
+    for(int c = 0; c < args.number_of_cores; ++c) {
+        struct lwip_dpdk_context* context = lwip_dpdk_context_create(global_context, 0);
+        if(context == NULL) {
+            rte_exit(EXIT_FAILURE, "Failed to create context\n");
+        }
+        contexts[c] = context;
     }
+
 
     struct lwip_dpdk_global_netif* global_netif = lwip_dpdk_global_netif_create(global_context, port_id, &args.ip_addr, &args.netmask, &lwip_dpdk_ip_addr_any);
 
@@ -337,29 +351,61 @@ int main(int argc, char** argv) {
     etharp_add_static_entry(&arp_ipaddr, &arp_ethaddr);*/
 
     RTE_LOG(INFO, APP, "Created eth port with ID %d\n", (int)lwip_dpdk_global_netif_get_port(global_netif));
-    RTE_LOG(INFO, APP, "\tIP: %s\n", context->api->ip4addr_ntoa(lwip_dpdk_global_netif_get_ipaddr(global_netif)));
-    RTE_LOG(INFO, APP, "\tNetmask: %s\n", context->api->ip4addr_ntoa(lwip_dpdk_global_netif_get_netmask(global_netif)));
+    RTE_LOG(INFO, APP, "\tIP: %s\n", contexts[0]->api->ip4addr_ntoa(lwip_dpdk_global_netif_get_ipaddr(global_netif)));
+    RTE_LOG(INFO, APP, "\tNetmask: %s\n", contexts[0]->api->ip4addr_ntoa(lwip_dpdk_global_netif_get_netmask(global_netif)));
 
     RTE_LOG(INFO, APP, "Configuration is finished, starting lwip-dpdk machinery...\n");
     if(lwip_dpdk_start(global_context) < 0) {
         rte_exit(EXIT_FAILURE, "failed to start lwip-dpdk");
     }
 
-    number_of_connections = args.number_of_connections;
-    input_states = new ui_input_state[number_of_connections];
-    connections = (struct tcp_pcb**)calloc(number_of_connections, sizeof(struct tcp_pcb*));
+    struct main_core_args main_core_args[args.number_of_cores];
+    for(int c = 0; c < args.number_of_cores; ++c) {
+        main_core_args[c].args = &args;
+        main_core_args[c].context = contexts[c];
+    }
+
+    for(int c = 0; c < args.number_of_cores; ++c) {
+        RTE_LOG(INFO, APP, "Launching core %d...\n", c);
+        rte_eal_remote_launch(main_core, &main_core_args[c], c + 1);
+    }
+
+    for(int c = 0; c < args.number_of_cores; ++c) {
+        rte_eal_wait_lcore(c+1);
+    }
+
+    lwip_dpdk_close(global_context);
+    rte_exit(EXIT_SUCCESS, "Finished\n");
+}
+
+int main_core(void* arg) {
+    struct main_core_args* main_core_args = (struct main_core_args*)arg;
+    struct program_args* args = main_core_args->args;
+    struct lwip_dpdk_context* context = main_core_args->context;
+
+    RTE_LOG(INFO, APP, "Running context %d (%p) on lcore %d\n", context->index, context, rte_lcore_id());
+
+    int number_of_connections = args->number_of_connections;
+    struct ui_input_state* input_states = new ui_input_state[number_of_connections];
+    struct tcp_pcb** connections = (struct tcp_pcb**)calloc(number_of_connections, sizeof(struct tcp_pcb*));
 
     for(int i = 0; i < number_of_connections; i++) {
         RTE_LOG(INFO, APP, "Creating connection %d of %d...\n", i + 1, number_of_connections);
         struct tcp_pcb* connection = context->api->tcp_new();
+
+        input_states[i].input_filepath = args->input_filepath;
+        input_states[i].context = context;
+
         context->api->tcp_arg(connection, &input_states[i]);
 
         err_t tcp_ret;
         RTE_LOG(INFO, APP, "Setting up connecting...\n");
 
         context->api->tcp_sent(connection, callback_sent); //set callback for acknowledgment
-        tcp_ret = context->api->_tcp_connect(connection, &args.dest_ip, args.dest_port, [](void* arg, struct tcp_pcb* pcb, err_t err) -> err_t {
+        tcp_ret = context->api->_tcp_connect(connection, &args->dest_ip, args->dest_port, [](void* arg, struct tcp_pcb* pcb, err_t err) -> err_t {
             struct ui_input_state* input_state = (struct ui_input_state*)arg;
+            struct lwip_dpdk_context* context = input_state->context;
+
             if(err == ERR_OK) {
                 input_state->connected = true;
                 RTE_LOG(INFO, APP, "Established connection to %s, src port %d\n", context->api->ip4addr_ntoa(&pcb->remote_ip), context->api->lwip_ntohs(pcb->remote_port));
@@ -375,24 +421,20 @@ int main(int argc, char** argv) {
         }
         context->api->tcp_recv(connection, callback_ui_output);
         connections[i] = connection;
-    }
 
-    RTE_LOG(INFO, APP, "Starting net io input loop...\n");
-    dispatch_netio_thread(context, args.input_filepath);
-    RTE_LOG(INFO, APP, "Net io input finished\n");
-
-    lwip_dpdk_close(global_context);
-    rte_exit(EXIT_SUCCESS, "Finished\n");
-}
-
-int
-dispatch_netio_thread(struct lwip_dpdk_context* context, string input_filepath)
-{
-    for(int i = 0; i < number_of_connections; i++) {
-        input_states[i].input_filepath = input_filepath;
         input_states[i].connection = connections[i];
     }
 
+    RTE_LOG(INFO, APP, "Starting net io input loop...\n");
+    dispatch_netio_thread(input_states, context, number_of_connections);
+    RTE_LOG(INFO, APP, "Net io input finished\n");
+
+    return 0;
+}
+
+int
+dispatch_netio_thread(struct ui_input_state* input_states, struct lwip_dpdk_context* context, int number_of_connections)
+{
     duration_start(&duration_bytes_sent);
 
     while (!quit) {
@@ -443,15 +485,15 @@ dispatch_ui_input(ui_input_state* state)
             flags |= TCP_WRITE_FLAG_MORE;
         }
 
-        context->api->tcp_write(state->connection, state->buffer, (u16_t)bytes_read, flags);
-        context->api->tcp_output(state->connection);
+        state->context->api->tcp_write(state->connection, state->buffer, (u16_t)bytes_read, flags);
+        state->context->api->tcp_output(state->connection);
 
         return 0;
     }
     else {
         printf("closing connection\n");
         state->connected = false;
-        context->api->tcp_close(state->connection);
+        state->context->api->tcp_close(state->connection);
 
         return -2;
     }
@@ -479,6 +521,8 @@ err_t callback_sent(void * arg, struct tcp_pcb * tpcb,
 err_t callback_ui_output(void * arg, struct tcp_pcb * tpcb,
                        struct pbuf * p, err_t err)
 {
+    struct ui_input_state* input_state = (struct ui_input_state*)arg;
+
     if(err != ERR_OK) {
         return err;
     }
@@ -487,7 +531,7 @@ err_t callback_ui_output(void * arg, struct tcp_pcb * tpcb,
 
     //acknowledge that we received the data
     if(p != NULL) {
-        context->api->tcp_recved(tpcb, p->len);
+        input_state->context->api->tcp_recved(tpcb, p->len);
     }
     else {
         //p is NULL when the connection has been finally closed
