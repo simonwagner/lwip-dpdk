@@ -81,18 +81,11 @@
    ---------- Memory options ----------
    ------------------------------------
 */
-/**
- * MEM_ALIGNMENT: should be set to the alignment of the CPU
- *    4 byte alignment -> #define MEM_ALIGNMENT 4
- *    2 byte alignment -> #define MEM_ALIGNMENT 2
- */
-#define MEM_ALIGNMENT                   1
 
 /**
- * MEM_SIZE: the size of the heap memory. If the application will send
- * a lot of data that needs to be copied, this should be set high.
- */
-#define MEM_SIZE                        (0xFFFFFFFFUL)
+ * use libc malloc instead of lwip's memory pools
+*/
+#define MEM_LIBC_MALLOC                 1
 
 
 /*
