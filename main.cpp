@@ -408,7 +408,7 @@ int main_core(void* arg) {
 
             if(err == ERR_OK) {
                 input_state->connected = true;
-                RTE_LOG(INFO, APP, "Established connection to %s, src port %d\n", context->api->ip4addr_ntoa(&pcb->remote_ip), context->api->lwip_ntohs(pcb->remote_port));
+                RTE_LOG(INFO, APP, "Established connection from port %d to %s, src port %d\n", pcb->local_port, context->api->ip4addr_ntoa(&pcb->remote_ip), pcb->remote_port);
             }
             else {
                 RTE_LOG(ERR, APP, "Connecting failed (%d)\n", err);
