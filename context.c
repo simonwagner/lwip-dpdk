@@ -7,6 +7,8 @@
 #include <errno.h>
 #include <assert.h>
 
+#include <link.h>
+
 #include "context_private.h"
 #include "mempool.h"
 #include "ethif_private.h"
@@ -28,6 +30,11 @@ static int lwip_dpdk_init_api(struct lwip_dpdk_lwip_api* api, const char* lwip_l
     if(api->handle == NULL) {
         return -ENOENT;
     }
+
+    struct link_map* link_map;
+    dlinfo(api->handle, RTLD_DI_LINKMAP, &link_map);
+
+    printf("lwip API has been loaded to address %p\n", link_map->l_addr);
 
     //fp generic
     LWIP_DPDK_LOAD_PRIVATE_SYMBOL(api, lwip_init);
