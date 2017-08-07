@@ -74,7 +74,25 @@ lwip_dpdk_port_eth_create(struct lwip_dpdk_port_eth_params *conf)
 
 	rte_eth_promiscuous_enable(port_id);
 
-	rte_eth_dev_info_get(port_id, &port->eth_dev_info);
+  rte_eth_dev_info_get(port_id, &port->eth_dev_info);
+
+  //explicitly set the redirection table
+  struct rte_eth_rss_reta_entry64* reta_conf = calloc(port->eth_dev_info.reta_size / RTE_RETA_GROUP_SIZE, sizeof(struct rte_eth_rss_reta_entry64));
+  int i;
+  for(i = 0; i < port->eth_dev_info.reta_size; ++i) {
+    struct rte_eth_rss_reta_entry64* one_reta_conf = &reta_conf[i / RTE_RETA_GROUP_SIZE];
+    one_reta_conf->reta[i % RTE_RETA_GROUP_SIZE] = i % conf->nb_queues;
+  }
+
+  for(i = 0; i < port->eth_dev_info.reta_size / RTE_RETA_GROUP_SIZE; ++i) {
+    struct rte_eth_rss_reta_entry64* one_reta_conf = &reta_conf[i];
+    one_reta_conf->mask = 0xFFFFFFFFFFFFFFFFULL;
+  }
+
+
+  rte_eth_dev_rss_reta_update(port_id, reta_conf, port->eth_dev_info.reta_size);
+
+  free(reta_conf);
 
 	return port;
 }

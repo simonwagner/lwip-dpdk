@@ -52,6 +52,7 @@
 #include "ethif_private.h"
 #include "mempool.h"
 #include "tools.h"
+#include "rss.h"
 
 #define RTE_TEST_RX_DESC_DEFAULT 128
 #define RTE_TEST_TX_DESC_DEFAULT 512
@@ -110,6 +111,14 @@ void lwip_dpdk_global_netif_start(struct lwip_dpdk_global_context* global_contex
     params.nb_rx_desc = RTE_TEST_RX_DESC_DEFAULT;
     params.nb_tx_desc = RTE_TEST_TX_DESC_DEFAULT;
     params.eth_conf.link_speeds = ETH_LINK_SPEED_AUTONEG;
+    struct rte_eth_rss_conf rss_conf = {
+        (uint8_t*)rss_hash_key,
+        40,
+        ETH_RSS_TCP,
+    };
+    params.eth_conf.rx_adv_conf.rss_conf = rss_conf;
+    params.eth_conf.rxmode.mq_mode = ETH_MQ_RX_RSS;
+    params.eth_conf.txmode.mq_mode = ETH_MQ_TX_NONE;
 
     port = lwip_dpdk_port_eth_create(&params);
     if(port == NULL) {
@@ -182,7 +191,7 @@ err_t lwip_dpdk_ethif_queue_input(struct netif *netif, struct rte_mbuf *m)
 {
     struct lwip_dpdk_queue_eth *lwip_dpdk_ethif = (struct lwip_dpdk_queue_eth *)netif->state;
 	int len = rte_pktmbuf_pkt_len(m);
-	char *dat = rte_pktmbuf_mtod(m, char *);
+    uint8_t *dat = rte_pktmbuf_mtod(m, uint8_t *);
 	struct pbuf *p, *q;
 
     p = lwip_dpdk_ethif->context->api->_pbuf_alloc(PBUF_RAW, len, PBUF_POOL);
@@ -190,7 +199,41 @@ err_t lwip_dpdk_ethif_queue_input(struct netif *netif, struct rte_mbuf *m)
 		rte_pktmbuf_free(m);
 		return ERR_OK;
 	}
+    if(lwip_dpdk_ethif->queue_id == 0) {
+        goto process_packets;
+    }
+#ifdef LWIP_DPDK_DUMP_TRAFFIC
+    char buffer[1024] = {0};
+    char linebuffer[256];
+    sprintf(linebuffer, "queue %d: %d bytes have arrived\n", lwip_dpdk_ethif->queue_id, len);
+    strcat(buffer, linebuffer);
+    uint16_t etherProt;
+    if(len >= 14) {
+        etherProt = dat[12] << 8 | dat[13];
+        sprintf(linebuffer, "\tether (%d)\n", (int)etherProt);
+        strcat(buffer, linebuffer);
+    }
+    if(len > 14 + 20 && etherProt == 0x0800) {
+        uint8_t* ipHeader = dat + 14;
+        uint8_t* srcIP = ipHeader + 12;
+        uint8_t* dstIP = ipHeader + 16;
+        uint8_t* protocol = ipHeader + 9;
+        sprintf(linebuffer, "\tIP src %d.%d.%d.%d -> IP dst %d.%d.%d.%d (%d - %s)\n",
+                (int)srcIP[0], (int)srcIP[1], (int)srcIP[2], (int)srcIP[3],
+                (int)dstIP[0], (int)dstIP[1], (int)dstIP[2], (int)dstIP[3], (int)*protocol, *protocol == 6 ? "TCP" : "other");
+        strcat(buffer, linebuffer);
 
+        if(*protocol == 6) {
+            uint8_t* tcpHeader = ipHeader + 20;
+            uint16_t srcPort = tcpHeader[0] << 8 | tcpHeader[1];
+            uint16_t dstPort = tcpHeader[2] << 8 | tcpHeader[3];
+            sprintf(linebuffer, "\tTCP port src %d -> TPC port dst %d\n", srcPort, dstPort);
+            strcat(buffer, linebuffer);
+        }
+    }
+    puts(buffer);
+#endif
+ process_packets:
 	for(q = p; q != NULL; q = q->next) {
 		rte_memcpy(q->payload, dat, q->len);
 		dat += q->len;

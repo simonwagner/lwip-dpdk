@@ -52,19 +52,10 @@ lwip_dpdk_rss_for_ports(uint32_t cached_value, uint16_t sp, uint16_t dp)
 unsigned int
 lwip_dpdk_rss_queue_for_hash(uint32_t hash, uint32_t number_of_queues)
 {
-    //From mTCP:
-    /*-------------------------------------------------------------------*/
-    /* RSS redirection table is in the little endian byte order (intel)  */
-    /*                                                                   */
-    /* idx: 0 1 2 3 | 4 5 6 7 | 8 9 10 11 | 12 13 14 15 | 16 17 18 19 ...*/
-    /* val: 3 2 1 0 | 7 6 5 4 | 11 10 9 8 | 15 14 13 12 | 19 18 17 16 ...*/
-    /* qid = val % num_queues */
-    /*-------------------------------------------------------------------*/
-
-    uint32_t idx = hash;
-    //I could make this totally unreadable with bit fiddeling,
-    //but I believe in optimizing compilers
-    uint32_t val = (idx / 4) * 4 + (4 - idx % 4);
-
-    return hash % number_of_queues;
+    //NOTE: according to the datasheets for X540 only the lower 7 bits
+    //are used to calculate the lookup position.
+    //The XL710 datasheet, as far as I can decipher it can be configured
+    //to use the lower 9 bits - but as 2^9 is divisible by 2^7 this should
+    //not be a problem
+    return (hash & 0x7f) % number_of_queues;
 }
