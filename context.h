@@ -7,6 +7,7 @@
 #include <lwip/err.h>
 #include <lwip/netif.h>
 #include <lwip/tcp.h>
+#include <netif/ethernet.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -42,6 +43,7 @@ struct lwip_dpdk_lwip_api {
     void (*_netif_remove)(struct netif *netif);
     //- fp ethernet
     err_t (*_ethernet_input)(struct pbuf *p, struct netif *inp);
+    err_t (*_ethernet_output)(struct netif* netif, struct pbuf* p, const struct eth_addr* src, const struct eth_addr* dst, u16_t eth_type);
     err_t (*_etharp_output)(struct netif *netif, struct pbuf *q, const ip4_addr_t *ipaddr);
     //- fp tcp
     struct tcp_pcb * (*tcp_new)(void);
@@ -64,6 +66,7 @@ struct lwip_dpdk_lwip_api {
     void (*sys_check_timeouts)(void);
     //- fp memory
     struct pbuf * (*_pbuf_alloc)(pbuf_layer layer, u16_t length, pbuf_type type);
+    u8_t (*_pbuf_free)(struct pbuf *p);
     //- fp utility
     char *(*ip4addr_ntoa)(const ip4_addr_t *addr);
     u16_t (*lwip_ntohs)(u16_t s);
@@ -72,12 +75,18 @@ struct lwip_dpdk_lwip_api {
 
 };
 
+struct lwip_dpdk_arp_table;
+struct lwip_dpdk_arp_queue;
+
 struct lwip_dpdk_context {
     unsigned lcore;
     struct lwip_dpdk_lwip_api* api;
     struct netif* netifs;
     unsigned int netifs_count;
     unsigned int index;
+    struct lwip_dpdk_arp_table* arp_table;
+    struct lwip_dpdk_arp_queue* arp_queue;
+    struct lwip_dpdk_master_arp_table* global_arp_table;
 };
 
 struct lwip_dpdk_global_context;
@@ -89,6 +98,7 @@ void lwip_dpdk_close(struct lwip_dpdk_global_context* global_context);
 
 struct lwip_dpdk_context* lwip_dpdk_context_create(struct lwip_dpdk_global_context* global_context, uint8_t lcore);
 int lwip_dpdk_context_dispatch_input(struct lwip_dpdk_context* context);
+void lwip_dpdk_context_handle_timers(struct lwip_dpdk_context* context);
 
 #ifdef __cplusplus
 }

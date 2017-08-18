@@ -35,6 +35,8 @@
 
 #include <rte_ethdev.h>
 
+#include <lwip/tcp.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif

@@ -13,6 +13,8 @@
 #include "mempool.h"
 #include "ethif_private.h"
 #include "rss.h"
+#include "etharp_private.h"
+#include "etharp_master.h"
 
 #define LWIP_DPDK_PKT_BURST_SZ 512
 
@@ -26,7 +28,7 @@ const ip_addr_t lwip_dpdk_ip_addr_any = IPADDR4_INIT(IPADDR_ANY);
 
 static int lwip_dpdk_init_api(struct lwip_dpdk_lwip_api* api, const char* lwip_library_path)
 {
-    api->handle = dlmopen(LM_ID_NEWLM, lwip_library_path, RTLD_NOW | RTLD_LOCAL);
+    api->handle = dlmopen(LM_ID_NEWLM/*LM_ID_BASE*/, lwip_library_path, RTLD_NOW | RTLD_LOCAL);
     if(api->handle == NULL) {
         return -ENOENT;
     }
@@ -40,6 +42,10 @@ static int lwip_dpdk_init_api(struct lwip_dpdk_lwip_api* api, const char* lwip_l
     LWIP_DPDK_LOAD_PRIVATE_SYMBOL(api, lwip_init);
     LWIP_DPDK_LOAD_PRIVATE_SYMBOL(api, tcp_set_new_port_fn);
 
+    //fp memory
+    LWIP_DPDK_LOAD_PRIVATE_SYMBOL(api, pbuf_alloc);
+    LWIP_DPDK_LOAD_PRIVATE_SYMBOL(api, pbuf_free);
+
     //fp netif
     LWIP_DPDK_LOAD_PRIVATE_SYMBOL(api, netif_add);
     LWIP_DPDK_LOAD_PRIVATE_SYMBOL(api, netif_set_up);
@@ -49,6 +55,7 @@ static int lwip_dpdk_init_api(struct lwip_dpdk_lwip_api* api, const char* lwip_l
     //fp ethernet
     LWIP_DPDK_LOAD_PRIVATE_SYMBOL(api, ethernet_input);
     LWIP_DPDK_LOAD_PRIVATE_SYMBOL(api, etharp_output);
+    LWIP_DPDK_LOAD_PRIVATE_SYMBOL(api, ethernet_output);
 
     //fp tcp
     LWIP_DPDK_LOAD_SYMBOL(api, tcp_new);
@@ -89,6 +96,7 @@ struct lwip_dpdk_global_context* lwip_dpdk_init()
     global_context->global_netifs = calloc(LWIP_DPDK_MAX_COUNT_NETIFS, sizeof(struct lwip_dpdk_global_netif*));
 
     lwip_dpdk_rss_init();
+    lwip_dpdk_etharp_init(global_context);
 
     return global_context;
 }
@@ -100,6 +108,9 @@ struct lwip_dpdk_context* lwip_dpdk_context_create(struct lwip_dpdk_global_conte
 
     if(lwip_dpdk_init_api(api, "./liblwip.so") != 0) {
         goto fail;
+    }
+    if(lwip_dpdk_etharp_context_init(context) != 0) {
+      goto fail;
     }
 
     context->api = api;
@@ -118,11 +129,24 @@ struct lwip_dpdk_context* lwip_dpdk_context_create(struct lwip_dpdk_global_conte
     global_context->contexts[index] = context;
     context->index = index;
 
+    //set up the shared ARP table
+    if(context->index == 0) {
+      //this is the master context, it will handle the master ARP table
+      //init the table now and make sure it is located on the same socket
+      //as its context
+      lwip_dpdk_etharp_master_table_init(&global_context->master_arp_table,
+                                         rte_lcore_to_socket_id(context->lcore));
+    }
+    context->global_arp_table = &global_context->master_arp_table;
+    //set up ARP table for context
+    lwip_dpdk_etharp_context_init(context);
+
     pthread_mutex_unlock(&global_context->mutex);
 
     return context;
 
 fail:
+    lwip_dpdk_etharp_context_release(context);
     free(context);
     free(api);
     return NULL;
@@ -130,6 +154,8 @@ fail:
 
 static void lwip_dpdk_context_release(struct lwip_dpdk_context* context)
 {
+    lwip_dpdk_etharp_context_release(context);
+
     dlclose(context->api->handle);
     free(context->api);
     free(context);
@@ -207,12 +233,16 @@ void lwip_dpdk_close(struct lwip_dpdk_global_context* global_context)
     free(global_context);
 }
 
+void lwip_dpdk_context_handle_timers(struct lwip_dpdk_context* context)
+{
+  context->api->sys_check_timeouts();
+  lwip_dpdk_etharp_tmr(context);
+}
+
 int lwip_dpdk_context_dispatch_input(struct lwip_dpdk_context* context)
 {
     int i, j;
     struct rte_mbuf *pkts[LWIP_DPDK_PKT_BURST_SZ];
-
-    context->api->sys_check_timeouts(); //TODO: this should be moved to its own method
 
     for(i = 0; i < context->netifs_count; ++i) {
         struct netif* netif = &context->netifs[i];

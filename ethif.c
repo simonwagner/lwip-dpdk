@@ -50,6 +50,8 @@
 #include "context.h"
 #include "context_private.h"
 #include "ethif_private.h"
+#include "etharp_private.h"
+#include "etharp_slave.h"
 #include "mempool.h"
 #include "tools.h"
 #include "rss.h"
@@ -171,6 +173,14 @@ static void lwip_dpdk_netif_add(struct lwip_dpdk_context* context, struct netif*
         rte_exit(EXIT_FAILURE, "Cannot alloc eth queue\n");
     }
 
+    netif->arp.output = lwip_dpdk_etharp_output;
+    if(context->index == 0) {
+      netif->arp.input = lwip_dpdk_etharp_master_input;
+    }
+    else {
+      netif->arp.input = lwip_dpdk_etharp_slave_input;
+    }
+
     context->api->_netif_add(netif,
           ipaddr,
           netmask,
@@ -278,7 +288,7 @@ static err_t ethif_queue_added_cb(struct netif *netif)
 
 	netif->name[0] = 'e';
 	netif->name[1] = 't';
-    netif->output = lwip_dpdk_ethif->context->api->_etharp_output;
+  netif->output = netif->arp.output;
 	netif->linkoutput = low_level_output;
 	netif->mtu = 1500;
 	netif->flags = NETIF_FLAG_BROADCAST | NETIF_FLAG_ETHARP;

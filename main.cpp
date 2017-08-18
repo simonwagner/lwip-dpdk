@@ -438,6 +438,7 @@ dispatch_netio_thread(struct ui_input_state* input_states, struct lwip_dpdk_cont
     duration_start(&duration_bytes_sent);
 
     while (!quit) {
+        lwip_dpdk_context_handle_timers(context);
         lwip_dpdk_context_dispatch_input(context);
 
         for(int i = 0; i < number_of_connections; i++) {
