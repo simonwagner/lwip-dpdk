@@ -30,18 +30,12 @@
 #   (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 #   OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #
-srcdir = @srcdir@
-abs_srcdir = @abs_srcdir@
-prefix = @prefix@
-exec_prefix = $(prefix)
-bindir = $(exec_prefix)/bin
-sbindir = $(exec_prefix)/sbin
-libexecdir = $(exec_prefix)/libexec
-datadir = $(prefix)/share
-enable_debug = @enable_debug@
+srcdir = .
+abs_srcdir := $(dir $(realpath $(lastword $(MAKEFILE_LIST))))
+enable_debug = no
 
-RTE_SDK = @RTE_SDK@
-RTE_TARGET = @RTE_TARGET@
+RTE_SDK = $(abs_srcdir)dpdk
+RTE_TARGET = x86_64-native-linuxapp-gcc
 
 include $(RTE_SDK)/mk/rte.vars.mk
 
@@ -53,9 +47,9 @@ SRCS-y := main.c tools.c mempool.c ethif.c \
 
 EXTRA_CFLAGS += -Wall \
 	-I$(abs_srcdir) \
-	-I$(abs_srcdir)/lwip-contrib/ports/unix/port/include/ \
-	-I$(abs_srcdir)/lwip/src/include/ipv4 \
-	-I$(abs_srcdir)/lwip/src/include
+	-I$(abs_srcdir)lwip-contrib/ports/unix/port/include/ \
+	-I$(abs_srcdir)lwip/src/include/ipv4 \
+	-I$(abs_srcdir)lwip/src/include
 
 CXXFLAGS += -g -std=c++11 $(CFLAGS) $(EXTRA_CFLAGS)
 LDFLAGS += -lstdc++
@@ -65,7 +59,3 @@ EXTRA_CFLAGS += -DLWIP_DEBUG=1 -O0 -g
 endif
 
 include $(RTE_SDK)/mk/rte.extapp.mk
-
-distclean: clean
-	@rm -f Makefile config.h config.status config.cache config.log
-	@rm -rf build autom4te.cache *~
