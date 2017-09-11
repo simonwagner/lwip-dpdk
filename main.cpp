@@ -24,6 +24,7 @@
 #include "main.hpp"
 #include "mempool.h"
 #include "tools.h"
+#include "api.h"
 
 using namespace std;
 
@@ -391,18 +392,18 @@ int main_core(void* arg) {
 
     for(int i = 0; i < number_of_connections; i++) {
         RTE_LOG(INFO, APP, "Creating connection %d of %d...\n", i + 1, number_of_connections);
-        struct tcp_pcb* connection = context->api->tcp_new();
+        struct tcp_pcb* connection = lwip_dpdk_tcp_new(context);
 
         input_states[i].input_filepath = args->input_filepath;
         input_states[i].context = context;
 
-        context->api->tcp_arg(connection, &input_states[i]);
+        lwip_dpdk_tcp_arg(context, connection, &input_states[i]);
 
         err_t tcp_ret;
         RTE_LOG(INFO, APP, "Setting up connection...\n");
 
-        context->api->tcp_sent(connection, callback_sent); //set callback for acknowledgment
-        tcp_ret = context->api->_tcp_connect(connection, &args->dest_ip, args->dest_port, [](void* arg, struct tcp_pcb* pcb, err_t err) -> err_t {
+        lwip_dpdk_tcp_sent(context, connection, callback_sent); //set callback for acknowledgment
+        tcp_ret = lwip_dpdk_tcp_connect(context, connection, &args->dest_ip, args->dest_port, [](void* arg, struct tcp_pcb* pcb, err_t err) -> err_t {
             struct ui_input_state* input_state = (struct ui_input_state*)arg;
             struct lwip_dpdk_context* context = input_state->context;
 
@@ -419,7 +420,7 @@ int main_core(void* arg) {
         if(tcp_ret != ERR_OK) {
             rte_exit(EXIT_FAILURE, "failed to connect");
         }
-        context->api->tcp_recv(connection, callback_ui_output);
+        lwip_dpdk_tcp_recv(context, connection, callback_ui_output);
         connections[i] = connection;
 
         input_states[i].connection = connections[i];
@@ -486,15 +487,15 @@ dispatch_ui_input(ui_input_state* state)
             flags |= TCP_WRITE_FLAG_MORE;
         }
 
-        state->context->api->tcp_write(state->connection, state->buffer, (u16_t)bytes_read, flags);
-        state->context->api->tcp_output(state->connection);
+        lwip_dpdk_tcp_write(state->context, state->connection, state->buffer, (u16_t)bytes_read, flags);
+        lwip_dpdk_tcp_output(state->context, state->connection);
 
         return 0;
     }
     else {
         printf("closing connection\n");
         state->connected = false;
-        state->context->api->tcp_close(state->connection);
+        lwip_dpdk_tcp_close(state->context, state->connection);
 
         return -2;
     }
@@ -533,7 +534,7 @@ err_t callback_ui_output(void * arg, struct tcp_pcb * tpcb,
 
     //acknowledge that we received the data
     if(p != NULL) {
-        input_state->context->api->tcp_recved(tpcb, p->len);
+        lwip_dpdk_tcp_recved(input_state->context, tpcb, p->len);
     }
     else {
         //p is NULL when the connection has been finally closed

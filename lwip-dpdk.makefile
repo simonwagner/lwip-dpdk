@@ -8,7 +8,7 @@ DPDK_MACHINE_FLAGS = $(shell cat "$(DPDK_LIB_PATH)/include/cflags.txt") -include
 RM = rm -f
 TARGET_LIB = build/liblwipdpdk.a
 
-SRCS = mempool.c ethif.c \
+SRCS = api.c mempool.c ethif.c \
 	port-eth.c context.c rss.c etharp.c etharp_master.c etharp_slave.c
 
 INCLUDES = -I$(ROOT_DIR) \
