@@ -399,7 +399,7 @@ int main_core(void* arg) {
         context->api->tcp_arg(connection, &input_states[i]);
 
         err_t tcp_ret;
-        RTE_LOG(INFO, APP, "Setting up connecting...\n");
+        RTE_LOG(INFO, APP, "Setting up connection...\n");
 
         context->api->tcp_sent(connection, callback_sent); //set callback for acknowledgment
         tcp_ret = context->api->_tcp_connect(connection, &args->dest_ip, args->dest_port, [](void* arg, struct tcp_pcb* pcb, err_t err) -> err_t {
@@ -408,7 +408,7 @@ int main_core(void* arg) {
 
             if(err == ERR_OK) {
                 input_state->connected = true;
-                RTE_LOG(INFO, APP, "Established connection from port %d to %s, src port %d\n", pcb->local_port, context->api->ip4addr_ntoa(&pcb->remote_ip), pcb->remote_port);
+                RTE_LOG(INFO, APP, "Established connection from port %d to %s, src port %d in context %d\n", pcb->local_port, context->api->ip4addr_ntoa(&pcb->remote_ip), pcb->remote_port, context->index);
             }
             else {
                 RTE_LOG(ERR, APP, "Connecting failed (%d)\n", err);
@@ -507,10 +507,11 @@ err_t callback_sent(void * arg, struct tcp_pcb * tpcb,
 
     sum_bytes_sent += len;
 
-    if(sum_bytes_sent > 10ULL*1024ULL*1024ULL) {
+    if(sum_bytes_sent > 1000ULL*1024ULL*1024ULL) {
         duration_stop(&duration_bytes_sent);
 
-        printf("\033[A\033[2KSpeed: %f MBits/s\n", sum_bytes_sent*8.0 / duration_as_sec(&duration_bytes_sent) / (1e6));
+        //printf("\033[A\033[2KSpeed: %f MBits/s\n", sum_bytes_sent*8.0 / duration_as_sec(&duration_bytes_sent) / (1e6));
+        printf("Speed: %f MBits/s\n", sum_bytes_sent*8.0 / duration_as_sec(&duration_bytes_sent) / (1e6));
 
         sum_bytes_sent = 0;
         duration_start(&duration_bytes_sent);
