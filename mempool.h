@@ -33,6 +33,7 @@
 #ifndef _MEMPOOL_H_
 #define _MEMPOOL_H_
 
+#include <sys/types.h>
 #include <rte_mbuf.h>
 #include <rte_mempool.h>
 
