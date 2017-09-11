@@ -34,8 +34,13 @@ srcdir = .
 abs_srcdir := $(dir $(realpath $(lastword $(MAKEFILE_LIST))))
 enable_debug = no
 
-RTE_SDK = $(abs_srcdir)dpdk
-RTE_TARGET = x86_64-native-linuxapp-gcc
+ifndef RTE_SDK
+$(error RTE_SDK is not set)
+endif
+
+ifndef RTE_TARGET
+$(error RTE_TARGET is not set)
+endif
 
 include $(RTE_SDK)/mk/rte.vars.mk
 
