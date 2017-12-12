@@ -47,9 +47,9 @@ struct lwip_dpdk_lwip_api {
     err_t (*_etharp_output)(struct netif *netif, struct pbuf *q, const ip4_addr_t *ipaddr);
     //- fp tcp
     struct tcp_pcb * (*tcp_new)(void);
-    err_t            (*_tcp_bind)    (struct tcp_pcb *pcb, const ip_addr_t *ipaddr,
+    err_t            (*tcp_bind)    (struct tcp_pcb *pcb, const ip_addr_t *ipaddr,
                                   u16_t port);
-    err_t            (*_tcp_connect) (struct tcp_pcb *pcb, const ip_addr_t *ipaddr,
+    err_t            (*tcp_connect) (struct tcp_pcb *pcb, const ip_addr_t *ipaddr,
                                   u16_t port, tcp_connected_fn connected);
     err_t            (*tcp_write)   (struct tcp_pcb *pcb, const void *dataptr, u16_t len,
                                   u8_t apiflags);
@@ -63,7 +63,7 @@ struct lwip_dpdk_lwip_api {
     //- fp tcp callback
     void             (*tcp_recv)    (struct tcp_pcb *pcb, tcp_recv_fn recv);
     //- fp timers
-    void (*sys_check_timeouts)(void);
+    void (*_sys_check_timeouts)(void);
     //- fp memory
     struct pbuf * (*_pbuf_alloc)(pbuf_layer layer, u16_t length, pbuf_type type);
     u8_t (*_pbuf_free)(struct pbuf *p);

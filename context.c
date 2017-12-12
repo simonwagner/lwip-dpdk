@@ -6,6 +6,8 @@
 #include <pthread.h>
 #include <errno.h>
 #include <assert.h>
+#include <libgen.h>
+#include <stdio.h>
 
 #include <link.h>
 
@@ -59,8 +61,8 @@ static int lwip_dpdk_init_api(struct lwip_dpdk_lwip_api* api, const char* lwip_l
 
     //fp tcp
     LWIP_DPDK_LOAD_SYMBOL(api, tcp_new);
-    LWIP_DPDK_LOAD_PRIVATE_SYMBOL(api, tcp_bind);
-    LWIP_DPDK_LOAD_PRIVATE_SYMBOL(api, tcp_connect);
+    LWIP_DPDK_LOAD_SYMBOL(api, tcp_bind);
+    LWIP_DPDK_LOAD_SYMBOL(api, tcp_connect);
     LWIP_DPDK_LOAD_SYMBOL(api, tcp_write);
     LWIP_DPDK_LOAD_SYMBOL(api, tcp_output);
     LWIP_DPDK_LOAD_SYMBOL(api, tcp_recved);
@@ -73,7 +75,7 @@ static int lwip_dpdk_init_api(struct lwip_dpdk_lwip_api* api, const char* lwip_l
     LWIP_DPDK_LOAD_SYMBOL(api, tcp_sent);
 
     //fp timeout
-    LWIP_DPDK_LOAD_SYMBOL(api, sys_check_timeouts);
+    LWIP_DPDK_LOAD_PRIVATE_SYMBOL(api, sys_check_timeouts);
 
     //fp memory
     LWIP_DPDK_LOAD_PRIVATE_SYMBOL(api, pbuf_alloc);
@@ -99,6 +101,13 @@ struct lwip_dpdk_global_context* lwip_dpdk_init()
     lwip_dpdk_etharp_init(global_context);
 
     return global_context;
+}
+
+void lwip_dpdk_get_lwip_path(char* path_buffer, size_t max_size)
+{
+    char exe_path[MAX_PATH];
+    readlink("/proc/self/exe", exe_path, PATH_MAX);
+    snprintf(path_buffer, max_size, "%s/%s", dirname(exe_path), "/liblwip.so");
 }
 
 struct lwip_dpdk_context* lwip_dpdk_context_create(struct lwip_dpdk_global_context* global_context, uint8_t lcore)
@@ -235,7 +244,7 @@ void lwip_dpdk_close(struct lwip_dpdk_global_context* global_context)
 
 void lwip_dpdk_context_handle_timers(struct lwip_dpdk_context* context)
 {
-  context->api->sys_check_timeouts();
+  context->api->_sys_check_timeouts();
   lwip_dpdk_etharp_tmr(context);
 }
 

@@ -403,7 +403,7 @@ int main_core(void* arg) {
         RTE_LOG(INFO, APP, "Setting up connection...\n");
 
         lwip_dpdk_tcp_sent(context, connection, callback_sent); //set callback for acknowledgment
-        tcp_ret = lwip_dpdk_tcp_connect(context, connection, &args->dest_ip, args->dest_port, [](void* arg, struct tcp_pcb* pcb, err_t err) -> err_t {
+        tcp_ret = lwip_dpdk_tcp_connect(context, connection, ip_addr_get_ip4_u32(&args->dest_ip), args->dest_port, [](void* arg, struct tcp_pcb* pcb, err_t err) -> err_t {
             struct ui_input_state* input_state = (struct ui_input_state*)arg;
             struct lwip_dpdk_context* context = input_state->context;
 
