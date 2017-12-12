@@ -408,4 +408,6 @@
 
 /* Misc */
 
+#define LWIP_DONT_PROVIDE_BYTEORDER_FUNCTIONS   1
+
 #endif /* __LWIPOPTS_H__ */
