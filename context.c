@@ -105,7 +105,7 @@ struct lwip_dpdk_global_context* lwip_dpdk_init()
 
 void lwip_dpdk_get_lwip_path(char* path_buffer, size_t max_size)
 {
-    char exe_path[MAX_PATH];
+    char exe_path[PATH_MAX];
     readlink("/proc/self/exe", exe_path, PATH_MAX);
     snprintf(path_buffer, max_size, "%s/%s", dirname(exe_path), "/liblwip.so");
 }
@@ -263,7 +263,7 @@ int lwip_dpdk_context_dispatch_input(struct lwip_dpdk_context* context)
             n_pkts = lwip_dpdk_port_eth_rx_burst(lwip_dpdk_queue, pkts, LWIP_DPDK_PKT_BURST_SZ);
 
             for (j = 0; j < n_pkts; j++) {
-                lwip_dpdk_ethif_queue_input(netif, pkts[i]);
+                lwip_dpdk_ethif_queue_input(context, netif, pkts[i]);
             }
 
         } while(unlikely(n_pkts > LWIP_DPDK_PKT_BURST_SZ));

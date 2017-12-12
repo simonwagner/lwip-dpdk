@@ -197,22 +197,23 @@ static void lwip_dpdk_netif_add(struct lwip_dpdk_context* context, struct netif*
  *   pbuf: transfer the ownership of a newly allocated pbuf to lwip
  *   mbuf: free all here
  */
-err_t lwip_dpdk_ethif_queue_input(struct netif *netif, struct rte_mbuf *m)
+err_t lwip_dpdk_ethif_queue_input(struct lwip_dpdk_context* context, struct netif *netif, struct rte_mbuf *m)
 {
-    struct lwip_dpdk_queue_eth *lwip_dpdk_ethif = (struct lwip_dpdk_queue_eth *)netif->state;
 	int len = rte_pktmbuf_pkt_len(m);
     uint8_t *dat = rte_pktmbuf_mtod(m, uint8_t *);
 	struct pbuf *p, *q;
 
-    p = lwip_dpdk_ethif->context->api->_pbuf_alloc(PBUF_RAW, len, PBUF_POOL);
+    p = context->api->_pbuf_alloc(PBUF_RAW, len, PBUF_POOL); //TODO: maybe use PBUF_REF and point payload to dat, then deallocate after passing to netif->input
 	if (p == 0) {
 		rte_pktmbuf_free(m);
 		return ERR_OK;
 	}
+#ifdef LWIP_DPDK_DUMP_TRAFFIC
+    struct lwip_dpdk_queue_eth *lwip_dpdk_ethif = (struct lwip_dpdk_queue_eth *)netif->state;
     if(lwip_dpdk_ethif->queue_id == 0) {
         goto process_packets;
     }
-#ifdef LWIP_DPDK_DUMP_TRAFFIC
+
     char buffer[1024] = {0};
     char linebuffer[256];
     sprintf(linebuffer, "queue %d: %d bytes have arrived\n", lwip_dpdk_ethif->queue_id, len);
