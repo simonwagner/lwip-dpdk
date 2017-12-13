@@ -66,7 +66,8 @@ lwip_dpdk_port_eth_create(struct lwip_dpdk_port_eth_params *conf)
 
     ret = rte_eth_dev_configure(port_id, conf->nb_queues, conf->nb_queues, &conf->eth_conf);
 	if (ret < 0) {
-		RTE_LOG(ERR, PORT, "Cannot config eth dev: %s\n",
+        RTE_LOG(ERR, PORT, "Cannot config eth dev at port %d: %s\n",
+            (int)port_id,
 			rte_strerror(-ret));
         free(port);
 		return NULL;
