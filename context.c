@@ -107,15 +107,17 @@ void lwip_dpdk_get_lwip_path(char* path_buffer, size_t max_size)
 {
     char exe_path[PATH_MAX];
     readlink("/proc/self/exe", exe_path, PATH_MAX);
-    snprintf(path_buffer, max_size, "%s/%s", dirname(exe_path), "/liblwip.so");
+    snprintf(path_buffer, max_size, "%s/%s", dirname(exe_path), "liblwip.so");
 }
 
 struct lwip_dpdk_context* lwip_dpdk_context_create(struct lwip_dpdk_global_context* global_context, uint8_t lcore)
 {
     struct lwip_dpdk_context* context = calloc(1, sizeof(struct lwip_dpdk_context));
     struct lwip_dpdk_lwip_api* api = calloc(1, sizeof(struct lwip_dpdk_lwip_api));
+    char lib_path[PATH_MAX];
 
-    if(lwip_dpdk_init_api(api, "./liblwip.so") != 0) {
+    lwip_dpdk_get_lwip_path(lib_path, PATH_MAX);
+    if(lwip_dpdk_init_api(api, lib_path) != 0) {
         goto fail;
     }
     if(lwip_dpdk_etharp_context_init(context) != 0) {
